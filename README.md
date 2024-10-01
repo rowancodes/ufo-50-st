@@ -3,7 +3,7 @@
 </p>
 
 # UFO 50 Save Tool
-A save tool/editor for UFO 50. (Windows only)
+(Windows only)
 
 My partner and I were playing on the same account on the couch, when they started playing on their own I wanted to get them their Divers save, ended up making this.
 
