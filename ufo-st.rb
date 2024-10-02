@@ -338,13 +338,12 @@ def get_help(logo: true)
     puts "\t\t\tbefore continuing (be careful!)"
     puts "\t--overwrite =>\toverwrites existing game data"
     puts "\t\t\twithout asking (be careful!)"
-    puts "v1.0.0"
+    puts "v1.0.1"
 end
 
 def decode_file(filepath)
     input = File.open(filepath, "r:utf-8")
-    line = input.readline.force_encoding("UTF-8")
-    output = Base64.decode64(line).force_encoding("UTF-8")
+    output = Base64.decode64(input.readline.force_encoding("UTF-8")).force_encoding("UTF-8")
 end
 
 def encode_data(game_data)
@@ -369,13 +368,56 @@ def fail_with_reason(reason: "FailureUnknown", error: true)
     puts reason
 end
 
-def game_val_ok?(game_val)
-    game_val_ok = game_val.all? do |game_num|
+def game_vals_ok?(game_val)
+    game_val.all? do |game_num|
         (1..50).to_a.include?(game_num.to_i)
     end
 end
 
 def validate_parameters(user_input)
+    def missing_or_no_params?(params, expected_count, expected_params, reason: "Incorrect usage.", exact: false)
+        if (params.count < expected_count) || ((params.count != expected_count) && exact) || expected_params.all? { |param| params.include?(param) }.!
+            fail_with_reason(reason: reason, error: false)
+            return true
+        end
+        false
+    end
+
+    def slot_num_invalid?(slots, reason: "Slot parameter should be 1, 2, or 3.")
+        if slots.all? { |val| %w(1 2 3).include?(val) }.!
+            fail_with_reason(reason: reason) 
+            return true
+        end
+        false
+    end
+
+    def file_doesnt_exist_for_slots?(slots, reason: "Save file doesn't exist.")
+        slots.each do |filenum|
+            filepath = filepath_for_slot(filenum)
+            if File.exists?(filepath).!
+                fail_with_reason(reason: reason)
+                return true
+            end
+        end
+        false
+    end
+
+    def games_not_listed?(game_val, reason: "No game ids listed. Example: (1,13,27)")
+        if game_val.nil?
+            fail_with_reason(reason: reason)
+            return true
+        end
+        false
+    end
+
+    def game_ids_incorrect?(game_list)
+        if !game_vals_ok?(game_list)
+            fail_with_reason(reason: "One or more game ids incorrect: #{game_val.join(", ")}")
+            return true
+        end
+        false
+    end
+
     params = user_input.split(" ")
 
     return if params.empty?
@@ -386,101 +428,40 @@ def validate_parameters(user_input)
         get_help
         return 
     elsif params.first == "copy"
-        # no/missing params
-        if params.count == 1 || %w(-slot -to -games).all? { |param| params.include?(param) }.!
-            fail_with_reason(reason: "Usage: copy -slot [1/2/3] -to [1/2/3] -games 1,13,27", error: false)
-            return
-        end
+        return if missing_or_no_params?(params, 7, %w(-slot -to -games), reason: "Usage: copy -slot [1/2/3] -to [1/2/3] -games 1,13,27")
 
         game_val    = params[params.index("-games")+1]&.split(",")&.uniq
         slot_val    = params[params.index("-slot")+1]
         to_val      = params[params.index("-to")+1]
 
-        # slot 1/2/3
-        if [slot_val, to_val].all? { |val| %w(1 2 3).include?(val) }.!
-            fail_with_reason(reason: "-slot & -to parameter should be 1, 2, or 3") 
-            return
-        end
-
-        # file doesn't exist
-        [slot_val, to_val].each do |filenum|
-            filepath = filepath_for_slot(filenum)
-            if File.exists?(filepath).!
-                fail_with_reason(reason: "File does not exist: #{filepath}")
-                return
-            end
-        end
-
-        # no games listed
-        if game_val.nil?
-            fail_with_reason(reason: "No game ids listed. Example: (1,13,27)")
-            return
-        end
-
-        # game ids incorrect
-        if !game_val_ok?(game_val)
-            fail_with_reason(reason: "One or more game ids incorrect: #{game_val.join(", ")}")
-            return
-        end
+        return if slot_num_invalid?([slot_val, to_val], reason: "-slot & -to parameter should be 1, 2, or 3")
+        return if file_doesnt_exist_for_slots?([slot_val, to_val])
+        return if games_not_listed?(game_val)
+        return if game_ids_incorrect?(game_val)
 
         # ALL GOOD !!!!!!!!!!!!!!!!
         copy_games_to_save(slot_val, to_val, game_val)
     elsif params.first == "export"
+        return if missing_or_no_params?(params, 5, %w(-slot -games), reason: "Usage: export -slot [1/2/3] -games 17,35,49 (Optional: --output my_cool_disk)")
 
-        # no/missing params
-        if params.count == 1 || %w(-slot -games).all? { |param| params.include?(param) }.!
-            fail_with_reason(reason: "Usage: export -slot [1/2/3] -games 17,35,49 (Optional: --output my_cool_disk)", error: false)
-            return
-        end
-
-        game_vals    = params[params.index("-games")+1]&.split(",")
+        game_vals   = params[params.index("-games")+1]&.split(",")&.uniq
         slot_val    = params[params.index("-slot")+1]
 
-        # slot 1/2/3
-        if %w(1 2 3).include?(slot_val).!
-            fail_with_reason(reason: "-slot parameter should be 1, 2, or 3") 
-            return
-        end
-
-        # file doesn't exist
-        if File.exists?(filepath_for_slot(slot_val)).!
-            fail_with_reason(reason: "File does not exist: #{filepath}")
-            return
-        end
-
-        # no games listed
-        if game_vals.nil?
-            fail_with_reason(reason: "No game ids listed. Example: (1,13,27)")
-            return
-        end
-
-        # game ids incorrect
-        if !game_val_ok?(game_vals)
-            fail_with_reason(reason: "One or more game ids incorrect: #{game_vals.join(", ")}")
-            return
-        end
+        return if slot_num_invalid?([slot_val])
+        return if file_doesnt_exist_for_slots?([slot_val])
+        return if games_not_listed?(game_val)
+        return if game_ids_incorrect?(game_val)
 
         export_games_to_disk(slot_val, game_vals)
-
     elsif params.first == "import"
         fail_with_reason(reason: "Drag and drop a .ufodisk file onto the exe!", error: false)
         fail_with_reason(reason: "or from command line:", error: false)
         fail_with_reason(reason: ".\\ufo-st.exe \"C:\\path\\to\\file\\my_cool_disk.ufodisk\"", error: false)
-        return
     elsif params.first == "list"
         print_games_to_screen
-        return
     elsif params.first == "view"
-        if params.count != 2
-            fail_with_reason(reason: "Usage: view [1/2/3]", error: false)
-            return
-        end
-
-        # slot 1/2/3
-        if %w(1 2 3).include?(params.last).!
-            fail_with_reason(reason: "Parameter should be 1, 2, or 3") 
-            return
-        end
+        return if missing_or_no_params?(params, 2, [], reason: "Usage: view [1/2/3]", exact: true)
+        return if slot_num_invalid?([params.last])
 
         view_save_game_info(params.last)
     elsif params.first == "exit" || params.first == "quit"
@@ -488,7 +469,6 @@ def validate_parameters(user_input)
         exit
     else
         fail_with_reason(reason: "?? Unknown command: #{params.first}", error: false)
-        return
     end 
 end
 
@@ -505,8 +485,7 @@ def export_games_to_disk(slot_val, games_list)
         game = game_index[game_num.to_i.to_s.to_sym]
         internal_id = game[:id]
 
-        search = search_for_game_in_data(game_data, internal_id)
-        search = filter_data(search)
+        search = filter_data(search_for_game_in_data(game_data, internal_id))
 
         if search.empty?.!
             found_games.push(game_num) 
@@ -518,8 +497,6 @@ def export_games_to_disk(slot_val, games_list)
         fail_with_reason(reason: "No game data found in slot #{slot_val} for game ids: \n!! ##{games_list.join(", #")}")
     end
 
-    profile_name = profile_name(game_data)
-
     begin
         data_to_export = JSON.generate(data_to_export)
 
@@ -529,7 +506,7 @@ def export_games_to_disk(slot_val, games_list)
         if $optional_params[:output] != nil
             filename = $optional_params[:output].split(".").first + ".ufodisk"
         else
-            filename = "#{profile_name[:ufoDiskExporterName]}-#{games_list.join("-")}.ufodisk"
+            filename = "#{profile_name(game_data)[:ufoDiskExporterName]}-#{games_list.join("-")}.ufodisk"
         end
 
         File.open("#{save_tool_disk_path}#{filename}", "w:UTF-8") do |file|
@@ -545,14 +522,14 @@ def export_games_to_disk(slot_val, games_list)
         else
             return
         end
-    rescue
-        raise
+    rescue => e
+        puts "XX Export failed: #{e}"
     end
 end
 
 def profile_name(game_data)
     name = JSON.parse(game_data).select { |key, _v| key.include?("game0_profileName") }
-    name.nil? ? {} : {ufoDiskExporterName: name["game0_profileName"]}
+    name.nil? ? "EXPORT" : "#{name["game0_profileName"]}"
 end
 
 def import_ufodisk(path_to_disk)
@@ -595,17 +572,11 @@ def import_ufodisk(path_to_disk)
     copy_games_to_save(nil, slot_val, game_val, disk_drop: path_to_disk)
 end
 
-def kill_program(reason:)
-    puts "#{reason}"
-    exit
-end
-
 # filter out any save info not to copy
 def filter_data(game_data)
     filtered_terms = [
         "randSortOrder",            # saves track random sort order
         "HS NAME PREV",             # hiscores previous input
-        "ufoDiskExporterName",      # name i add for fun :3
     ]
 
     filter = game_data.select do |key, _v| 
@@ -777,8 +748,7 @@ def view_save_game_info(slot_num, from_disk: false, disk_path: nil)
     (1..50).to_a.each do |game_num|
         game = game_index[game_num.to_i.to_s.to_sym]
         internal_id = game[:id] 
-        search = search_for_game_in_data(game_data, internal_id)
-        search = filter_data(search)
+        search = filter_data(search_for_game_in_data(game_data, internal_id))
         stats = get_completion_stats(search, internal_id)
         next if search.empty?
 
