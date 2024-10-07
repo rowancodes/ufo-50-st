@@ -592,7 +592,7 @@ def get_help(logo: true)
     puts "\t\t\tbefore continuing (be careful!)"
     puts "\t--overwrite =>\toverwrites existing game data"
     puts "\t\t\twithout asking (be careful!)"
-    puts "v1.1.0"
+    puts "v1.1.1"
 end
 
 def decode_file(filepath)
