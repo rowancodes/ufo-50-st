@@ -35,7 +35,7 @@ view -slot 1 -bk
 view -slot 1 -bk 51
 
 # Export custom levels to shareable
-export -slot 1 -bk 51,52,53 --output my_block_koal_custom_levels
+export -slot 1 -bk 51,52,53 --output my_block_koala_custom_levels
 ```
 **Importing**
 ```rb
