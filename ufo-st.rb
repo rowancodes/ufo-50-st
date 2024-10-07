@@ -561,13 +561,15 @@ def get_help(logo: true)
     puts "\t-slot\t=>\tsource save slot [1/2/3]"
     puts "\t-to\t=>\tdestination save slot [1/2/3]"
     puts "\t-games\t=>\tlist of games to copy/export"
+    puts "\t-bk\t=>\tfor export/import/view of block"
+    puts "\t\t\t koala custom levels"
     puts "Optional:"
     puts "\t--output    =>\tspecify an output filename"
     puts "\t--no-verify =>\tdoes not verify game choice"
     puts "\t\t\tbefore continuing (be careful!)"
     puts "\t--overwrite =>\toverwrites existing game data"
     puts "\t\t\twithout asking (be careful!)"
-    puts "v1.0.1"
+    puts "v1.1.0"
 end
 
 def decode_file(filepath)
