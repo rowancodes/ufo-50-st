@@ -474,6 +474,29 @@ def set_optional_params(params)
     $optional_params[:validate_bk] = false if params.include?("--no-validate")
 end
 
+def print_custom_level_slots(slot_val)
+    valid = (51..58).map { |n| "game18_customLevel#{n}" }
+    game_data = decode_file(filepath_for_slot(slot_val))
+    ids = []
+    custom_levels = JSON.parse(game_data).each do |key, _v| 
+        if valid.include?(key) 
+            ids.push(key[-2..-1]) 
+            true
+        else
+            false
+        end
+    end
+
+    return if custom_levels.empty?
+
+    puts
+    puts "Type 'view -slot [1/2/3] -bk [51/52/etc]' to see level code"
+    puts "SLOT #{slot_val}:\t║ #51 ║ #52 ║ #53 ║ #54 ║"
+    puts "\t║ [#{ids.include?("51") ? "X" : " "}] ║ [#{ids.include?("52") ? "X" : " "}] ║ [#{ids.include?("53") ? "X" : " "}] ║ [#{ids.include?("54") ? "X" : " "}] ║"
+    puts "\t║ [#{ids.include?("55") ? "X" : " "}] ║ [#{ids.include?("56") ? "X" : " "}] ║ [#{ids.include?("57") ? "X" : " "}] ║ [#{ids.include?("58") ? "X" : " "}] ║"
+    puts "\t║ #55 ║ #56 ║ #57 ║ #58 ║"
+end
+
 def print_games_to_screen
     def tab_amount(game)
         return "\t" if game[:title].length >= 12
@@ -703,7 +726,12 @@ def validate_parameters(params)
 
         if params.include?("-bk")
             bk_val = params[params.index("-bk")+1]&.split(",")&.uniq
-            return if pv.value_nil?(bk_val, reason: "No custom level listed. Example: view -slot 1 -bk 51")
+
+            if bk_val.nil?
+                print_custom_level_slots(slot_val)
+                return
+            end
+
             return if pv.ids_incorrect?(bk_val, (51..58), reason: "Custom level id incorrect: #{bk_val.join(", ")}")
 
             view_custom_bk_maps(slot_val, bk_val)
