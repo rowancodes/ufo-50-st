@@ -25,6 +25,9 @@ export -slot 1 -games 1,2,3,4,5,6,7,8,9,10 --output my_cool_disk
 
 # View playtime + Gift/Gold/Cherry status of save file 1
 view -slot 1
+
+# Delete game save for slot (making it dusty again)
+delete -slot 1 -games 15
 ```
 **Block Koala**
 ```rb
