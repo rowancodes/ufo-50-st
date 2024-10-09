@@ -578,6 +578,7 @@ def get_help(logo: true)
     puts "\texport\t=>\texports games to a .ufodisk file"
     puts "\t\t\t to share w/ your friends :3"
     puts "\timport\t=>\tdisplays import help"
+    puts "\tdelete\t=>\tdeletes game data for slot"
     puts "\tlist\t=>\tlist ufosoft games"
     puts "\texit\t=>\tcloses the program"
     puts "Params:"
@@ -592,7 +593,7 @@ def get_help(logo: true)
     puts "\t\t\tbefore continuing (be careful!)"
     puts "\t--overwrite =>\toverwrites existing game data"
     puts "\t\t\twithout asking (be careful!)"
-    puts "v1.1.1"
+    puts "v1.1.2"
 end
 
 def decode_file(filepath)
@@ -738,6 +739,18 @@ def validate_parameters(params)
         else
             view_save_game_info(slot_val)
         end
+    elsif params.first == "delete"
+        return if pv.missing_or_no_params?(params, 5, [%w(-slot -games)], reason: "Usage: delete -slot [1/2/3] -games 15,13")
+
+        slot_val = params[params.index("-slot")+1]
+        game_val = params[params.index("-games")+1]&.split(",")&.uniq
+
+        return if pv.slot_num_invalid?([slot_val])
+        return if pv.file_doesnt_exist_for_slots?([slot_val])
+        return if pv.value_nil?(game_val)
+        return if pv.ids_incorrect?(game_val, (1..50))
+
+        delete_game_data_for_slot(game_val, slot_val)
     elsif params.first == "exit" || params.first == "quit"
         puts "bye bye :3"
         exit
@@ -806,7 +819,6 @@ def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
         end
     rescue => e
         puts "XX Export failed: #{e}"
-        raise
     end
 end
 
@@ -953,6 +965,47 @@ def filepath_for_slot(num, just_folder: false)
     "#{game_saves_location}save#{num}.ufo"
 end
 
+def delete_game_data_for_slot(game_list, slot)
+    source_data = decode_file(filepath_for_slot(slot))
+    found_games = []
+    data_to_delete = {}
+    game_list.each do |game_num|
+        game = game_index[game_num.to_i.to_s.to_sym]
+        internal_id = game[:id]
+
+        search = search_for_game_in_data(source_data, internal_id)
+        search = filter_data(search)
+
+        if search.empty?.!
+            found_games.push(game_num)
+            data_to_delete.merge!(search)
+        end
+    end
+
+    if found_games.empty?
+        found_games(reason: "No game data found in slot #{source_num} for game ids: \n!! ##{game_list.join(", #")}") if disk_drop.nil?
+        return
+    end
+
+    if $optional_params[:overwrite] == true || user_confirms_overwrite?(found_games, slot)
+        begin
+            source_data = JSON.parse(source_data)
+
+            data_to_delete.each do |key, _v|
+                source_data.delete(key)
+            end
+
+            source_data = JSON.generate(source_data)
+    
+            new_save_data = encode_data(source_data)
+    
+            save_data_to_slot(new_save_data, slot)
+        rescue => e
+            puts "XX Delete failed! => #{e}"
+        end
+    end
+end
+
 def save_data_to_slot(new_save_data, slot)
     save_tool_backup_path = "#{filepath_for_slot(nil, just_folder: true)}SaveEditorBackups\\"
 
@@ -980,11 +1033,13 @@ end
 
 def copy_data_to_slot(data_to_copy, data_to_delete, destination_data, destination_slot)
     begin
+        destination_data = JSON.parse(destination_data)
+
         data_to_delete.each do |key, _v|
             destination_data.delete(key)
         end
 
-        destination_data = JSON.parse(destination_data).merge(data_to_copy)
+        destination_data = destination_data.merge(data_to_copy)
         destination_data = JSON.generate(destination_data)
 
         new_save_data = encode_data(destination_data)
@@ -995,10 +1050,10 @@ def copy_data_to_slot(data_to_copy, data_to_delete, destination_data, destinatio
     end
 end
 
-def user_confirms_overwrite?(game_num_list, dest_slot_num, bk: false)
+def user_confirms_overwrite?(id_list, dest_slot_num, bk: false)
     puts "!! WARNING: THIS WILL REPLACE YOUR SAVE IN SLOT #{dest_slot_num} FOR:"
-    puts "!! #{game_num_list.map {|num| game_index[num.to_sym][:title]}.join(", ")}" if !bk
-    puts "!! #{game_num_list.join(", ")}" if bk
+    puts "!! #{id_list.map {|num| game_index[num.to_sym][:title]}.join(", ")}" if !bk
+    puts "!! #{id_list.join(", ")}" if bk
     puts "!! PROCEED? (y/N)"
     input = get_user_input
     if input == "y" || input == "yes"
@@ -1071,7 +1126,7 @@ def copy_games_to_save(source_num, destination_num, game_list, disk_drop: nil)
     end
 
     if source_found_games.empty?
-        fail_with_reason(reason: "No game data found in ufodisk for game ids: \n!! ##{game_list.join(", #")} (Press enter to exit)") if disk_drop != nil
+        fail_with_reason(reason: "No game data found in ufodisk for game ids: \n!! ##{game_list.join(", #")} (Press enter to exit)") if disk_drop.nil?.!
         fail_with_reason(reason: "No game data found in slot #{source_num} for game ids: \n!! ##{game_list.join(", #")}") if disk_drop.nil?
         get_user_input if disk_drop.nil?.!
         return
