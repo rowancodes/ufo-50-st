@@ -37,7 +37,7 @@ view -slot 1 -bk
 # View custom level code for save file 1, slot 51
 view -slot 1 -bk 51
 
-# Export custom levels to shareable
+# Export custom levels to shareable file
 export -slot 1 -bk 51,52,53 --output my_block_koala_custom_levels
 ```
 **Importing**
@@ -46,6 +46,6 @@ export -slot 1 -bk 51,52,53 --output my_block_koala_custom_levels
 ```
 
 ## Installation
-Go to Releases and download + run the exe. It should automatically detect your save files.
+Go to [Releases](https://github.com/rowancodes/ufo-50-st/releases) and download + run the exe. It should automatically detect your save files.
 
 ![image](https://github.com/user-attachments/assets/4bb96da5-1dd7-4d13-8937-665774ea4657)
