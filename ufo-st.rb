@@ -593,7 +593,7 @@ def get_help(logo: true)
     puts "\t\t\tbefore continuing (be careful!)"
     puts "\t--overwrite =>\toverwrites existing game data"
     puts "\t\t\twithout asking (be careful!)"
-    puts "v1.1.2"
+    puts "v1.1.3"
 end
 
 def decode_file(filepath)
@@ -788,7 +788,7 @@ def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
     end
 
     begin
-        bk_data ? (data_to_export = JSON.generate(data_to_export)) : (data_to_export = bk_data)
+        bk_data ? data_to_export = bk_data : data_to_export = JSON.generate(data_to_export)
         disk_data = encode_data(data_to_export) if !bk_data
 
         filename = nil
@@ -797,7 +797,7 @@ def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
         elsif disk_type == "BK"
             filename = "BK-SLOT#{slot_val}-#{games_list.join("-")}-#{DateTime.now.strftime("%Y-%m-%d-%H-%M-%S")}.ufodisk"
         else
-            filename = "#{profile_name(game_data)}-#{games_list.join("-")}#{DateTime.now.strftime("%Y-%m-%d-%H-%M-%S")}.ufodisk"
+            filename = "#{profile_name(game_data)}-#{games_list.join("-")}-#{DateTime.now.strftime("%Y-%m-%d-%H-%M-%S")}.ufodisk"
         end
 
         File.open("#{save_tool_disk_path}#{filename}", "w:UTF-8") do |file|
