@@ -400,7 +400,7 @@ def game_index
             :id=>"24"
         },
         :"39"=>{
-            :title=>"STAR WISPIR",
+            :title=>"STAR WASPIR",
             :filename=>"VERT.ufo",
             :id=>"17"
         },
