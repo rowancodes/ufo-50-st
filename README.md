@@ -10,9 +10,10 @@ My partner and I were playing on the same account on the couch, when they starte
 ## Features
 - Export specific games to a `.ufodisk` file
 - Import `.ufodisk` to your save by dropping them on the .exe
-- Export/Import Block Koala custom levels, edit them in plain text, validate authenticity on import
+- Delete specific game save data to put the dust back on your disks
 - Copy specific game saves from any slot to another
 - Backups your saves before any copy/export/import
+- Export/Import Block Koala custom levels, edit them in plain text, validate authenticity on import
 
 ## Example Commands
 **Save files**
