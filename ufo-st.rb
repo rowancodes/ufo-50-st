@@ -711,6 +711,19 @@ def print_games_to_screen
   puts "╚═══════════════════════════════════════╝"
 end
 
+def print_goals_for_games(game_vals)
+  puts "║"
+  game_vals.each do |game_num, game|
+    game = game_index[game_num.to_s.to_sym]
+    puts "║  #{game[:title]}:"
+    puts "║  \tGARDEN: #{game[:garden]}"
+    puts "║  \tGOLD: #{game[:gold]}"
+    puts "║  \tCHERRY: #{game[:cherry]}"
+    puts "║  \tDARK CHERRY: #{game[:dark_cherry]}"
+    puts "║"
+  end
+end
+
 def print_custom_bk_map(level_code, slot_val, custom_id)
   puts "╔════╣ #{slot_val}:#{custom_id} ╠════╗"
   12.times do |y|
@@ -779,6 +792,7 @@ def get_help(logo: true)
   puts "\t\t\t to share w/ your friends :3"
   puts "\timport\t=>\tdisplays import help"
   puts "\tdelete\t=>\tdeletes game data for slot"
+  puts "\tgoals\t=>\tshow goals for games"
   puts "\tlist\t=>\tlist ufosoft games"
   puts "\texit\t=>\tcloses the program"
   puts "Params:"
@@ -793,7 +807,7 @@ def get_help(logo: true)
   puts "\t\t\tbefore continuing (be careful!)"
   puts "\t--overwrite =>\toverwrites existing game data"
   puts "\t\t\twithout asking (be careful!)"
-  puts "v1.1.3"
+  puts "v1.1.4"
 end
 
 def decode_file(filepath)
@@ -939,6 +953,14 @@ def validate_parameters(params)
     else
       view_save_game_info(slot_val)
     end
+  elsif params.first == "goals"
+    return if pv.missing_or_no_params?(params, 3, [%w(-games)], reason: "Usage: goals -games [1/2/3]")
+
+    games_val = params[params.index("-games") + 1]&.split(",")&.uniq
+
+    return if pv.ids_incorrect?(games_val, (1..50))
+
+    print_goals_for_games(games_val)
   elsif params.first == "delete"
     return if pv.missing_or_no_params?(params, 5, [%w(-slot -games)], reason: "Usage: delete -slot [1/2/3] -games 15,13")
 
