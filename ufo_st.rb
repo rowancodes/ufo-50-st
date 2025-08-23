@@ -8,72 +8,10 @@ require 'json'
 require 'fileutils'
 require 'date'
 require_relative 'game_index'
+require_relative 'validate_parameters'
 require_relative 'block_koala'
 
 OPTIONAL_PARAMS = { output: nil, no_verify: false, overwrite: false, verbose: true, validate_bk: true }
-
-class ValidateParameters
-  def missing_or_no_params?(params, expected_count, expected_params, reason: 'Incorrect usage.', exact: false)
-    if (params.count < expected_count) || ((params.count != expected_count) && exact) || expected_params.any? do |set|
-      set.all? do |param|
-        params.include?(param)
-      end
-    end.!
-      fail_with_reason(reason: reason, error: false)
-      return true
-    end
-    false
-  end
-
-  def slot_num_invalid?(slots, reason: 'Slot parameter should be 1, 2, or 3.')
-    unless slots.all? { |val| %w[1 2 3].include?(val) }
-      fail_with_reason(reason: reason)
-      return true
-    end
-    false
-  end
-
-  def file_doesnt_exist_for_slots?(slots, reason: "Save file doesn't exist.")
-    slots.each do |filenum|
-      filepath = filepath_for_slot(filenum)
-      unless File.exist?(filepath)
-        fail_with_reason(reason: reason)
-        return true
-      end
-    end
-    false
-  end
-
-  def value_nil?(game_val, reason: 'No game ids listed. Example: (1,13,27)')
-    if game_val.nil?
-      fail_with_reason(reason: reason)
-      return true
-    end
-    false
-  end
-
-  def ids_incorrect?(list, range, reason: 'One or more game ids incorrect: ')
-    def vals_in_range?(vals, range)
-      vals.all? do |num|
-        range.to_a.include?(num.to_i)
-      end
-    end
-
-    unless vals_in_range?(list, range)
-      fail_with_reason(reason: "#{reason}#{list.join(', ')}")
-      return true
-    end
-    false
-  end
-
-  def wrong_number_of_ids?(list, expected_count, reason: 'Incorret number of ids')
-    if list.length != expected_count
-      fail_with_reason(reason: reason)
-      return true
-    end
-    false
-  end
-end
 
 SAVE_INDEX = {
   "1": nil,
@@ -102,8 +40,31 @@ class SaveFile
     end
   end
 
+  def filepath(folder: false)
+    game_saves_location = "#{ENV['LOCALAPPDATA']}\\ufo50\\"
+    return game_saves_location if folder == true
+
+    "#{game_saves_location}save#{@slot}.ufo"
+  end
+
+  def decode_file(filepath)
+    input = File.open(filepath, 'r:utf-8')
+    
+    Base64.decode64(input.readline.force_encoding('UTF-8')).force_encoding('UTF-8')
+  end
+
+  def encode_data(game_data)
+    end_char = "\u0000".force_encoding('UTF-8')
+
+    (Base64.encode64(game_data.force_encoding('UTF-8')).delete("\n") + end_char).force_encoding('UTF-8')
+  end
+
+  def decode_data(game_data)
+    Base64.decode64(game_data.force_encoding('UTF-8')).force_encoding('UTF-8')
+  end
+
   def raw_save_data
-    @raw_save_data ||= decode_file(filepath_for_slot(@slot))
+    @raw_save_data ||= decode_file(filepath)
   end
 
   def indexed_save_data
@@ -118,7 +79,8 @@ class SaveFile
 
     (0..50).each do |game_num|
       internal_id = GAME_INDEX[game_num.to_s.to_sym][:id]
-      index[game_num] = parsed.select { |k, _v| k.match(/\bgame#{internal_id}[^0-9][a-z]+|game0+[a-z][^0-9]+#{internal_id}\b/) }
+      search = parsed.select { |k, _v| k.match(/\bgame#{internal_id}[^0-9][a-z]+|game0+[a-z][^0-9]+#{internal_id}\b/) }
+      index[game_num] = search unless search.empty?
     end
 
     index
@@ -127,6 +89,7 @@ class SaveFile
   # filter out any save info not to copy
   def filtered_data
     return @filtered_save_data unless @filtered_save_data.nil?
+    debug(m: "Generating filtered data for slot #{@slot} because it was nil")
     filtered_save_data = indexed_save_data.dup
 
     filtered_terms = [
@@ -160,6 +123,14 @@ class SaveFile
 
   def force_indexing
     indexed_save_data
+  end
+
+  def reindex(new_raw_save_data)
+    debug(m: "Reindexing save data for slot #{@slot}")
+    @indexed_save_data.clear
+    @raw_save_data = new_raw_save_data
+    @indexed_save_data = build_save_data_index
+    @filtered_save_data = filtered_data
   end
 end
 
@@ -310,21 +281,6 @@ def get_help(logo: true)
   puts "\t--overwrite =>\toverwrites existing game data"
   puts "\t\t\twithout asking (be careful!)"
   puts 'v1.1.4'
-end
-
-def decode_file(filepath)
-  input = File.open(filepath, 'r:utf-8')
-  Base64.decode64(input.readline.force_encoding('UTF-8')).force_encoding('UTF-8')
-end
-
-def encode_data(game_data)
-  end_char = "\u0000".force_encoding('UTF-8')
-
-  (Base64.encode64(game_data.force_encoding('UTF-8')).delete("\n") + end_char).force_encoding('UTF-8')
-end
-
-def decode_data(game_data)
-  Base64.decode64(game_data.force_encoding('UTF-8')).force_encoding('UTF-8')
 end
 
 def get_user_input
@@ -505,11 +461,12 @@ def handle_delete(params, pv)
   return if pv.value_nil?(game_val)
   return if pv.ids_incorrect?(game_val, 1..50)
 
-  delete_game_data_for_slot(game_val, slot_val)
+  to_save = SaveFile.find_or_create_slot(slot_val)
+  delete_game_data_for_slot(game_val, to_save)
 end
 
 def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
-  save_tool_disk_path = "#{filepath_for_slot(nil, just_folder: true)}SaveEditorDiskExports\\"
+  save_tool_disk_path = "#{filepath_for_slot(nil, folder: true)}SaveEditorDiskExports\\"
   Dir.mkdir(save_tool_disk_path) unless File.exist?(save_tool_disk_path)
 
   unless bk_data
@@ -519,7 +476,7 @@ def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
     data_to_export = {}
 
     games_list.each do |game_num|
-      game = GAME_INDEX[game_num.to_i.to_s.to_sym]
+      game = GAME_INDEX[game_num.to_s.to_sym]
       internal_id = game[:id]
 
       search = filter_data(search_for_game_in_data(game_data, internal_id))
@@ -683,70 +640,50 @@ def search_for_game_in_data(game_data, game_id)
   JSON.parse(game_data).select { |key| key.match(/\bgame#{game_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{game_id}\b/) }
 end
 
-def filepath_for_slot(num, just_folder: false)
-  game_saves_location = "#{ENV['LOCALAPPDATA']}\\ufo50\\"
-  return game_saves_location if just_folder == true
-
-  "#{game_saves_location}save#{num}.ufo"
-end
-
-def delete_game_data_for_slot(game_list, slot)
-  source_data = decode_file(filepath_for_slot(slot))
-  found_games = []
-  data_to_delete = {}
-  game_list.each do |game_num|
-    game = GAME_INDEX[game_num.to_i.to_s.to_sym]
-    internal_id = game[:id]
-
-    search = search_for_game_in_data(source_data, internal_id)
-    search = filter_data(search)
-
-    unless search.empty?
-      found_games.push(game_num)
-      data_to_delete.merge!(search)
-    end
-  end
+def delete_game_data_for_slot(game_list, save)
+  found_games = games_in_common(save, game_list)
+  data_to_delete = save.search_for(game_list)
 
   if found_games.empty?
-    if disk_drop.nil?
-      found_games(reason: "No game data found in slot #{source_num} for game ids: \n!! ##{game_list.join(', #')}")
-    end
+    fail_with_reason(reason: "No game data found in slot #{save.slot} for game ids: \n!! ##{game_list.join(', #')}")
     return
   end
 
-  return unless OPTIONAL_PARAMS[:overwrite] == true || user_confirms_overwrite?(found_games, slot)
+  return unless OPTIONAL_PARAMS[:overwrite] == true || user_confirms_overwrite?(found_games, save.slot)
+
+  data_to_delete = data_to_delete.values.reduce({}, :merge)
 
   begin
-    source_data = JSON.parse(source_data)
+    source_data = JSON.parse(save.raw_save_data)
 
     data_to_delete.each_key do |key|
       source_data.delete(key)
     end
 
     source_data = JSON.generate(source_data)
+    save.reindex(source_data)
 
-    new_save_data = encode_data(source_data)
+    new_save_data = save.encode_data(source_data)
 
-    save_data_to_slot(new_save_data, slot)
+    save_data_to_slot(new_save_data, save)
   rescue StandardError => e
     puts "XX Delete failed! => #{e}"
   end
 end
 
-def save_data_to_slot(new_save_data, slot)
-  save_tool_backup_path = "#{filepath_for_slot(nil, just_folder: true)}SaveEditorBackups\\"
+def save_data_to_slot(new_save_data, save)
+  save_tool_backup_path = "#{save.filepath(folder: true)}SaveEditorBackups\\"
 
   unless OPTIONAL_PARAMS[:no_backup] == false
     Dir.mkdir(save_tool_backup_path) unless File.exist?(save_tool_backup_path)
-    FileUtils.cp(filepath_for_slot(slot),
-                 "#{save_tool_backup_path}\\save#{slot}_#{Time.now.strftime('%Y-%m-%d-%H-%M-%S')}.ufo")
+    FileUtils.cp(save.filepath,
+                 "#{save_tool_backup_path}\\save#{save.slot}_#{Time.now.strftime('%Y-%m-%d-%H-%M-%S')}.ufo")
   end
 
   save_path = if OPTIONAL_PARAMS[:output].nil?
-                filepath_for_slot(slot)
+                save.filepath
               else
-                "#{filepath_for_slot(nil,
-                                     just_folder: true)}#{OPTIONAL_PARAMS[:output]}"
+                "#{save.filepath(folder: true)}#{OPTIONAL_PARAMS[:output]}"
               end
 
   File.open(save_path, 'w:UTF-8') do |file|
@@ -757,12 +694,13 @@ def save_data_to_slot(new_save_data, slot)
   puts "!! #{save_path}"
   puts '?? Open folder? (y/N)'
   input = get_user_input
+
   return unless %w[y yes].include?(input)
 
-  system('explorer', "/select,#{filepath_for_slot(slot)}")
+  system('explorer', "/select,#{save.filepath}")
 end
 
-def copy_data_to_slot(data_to_copy, data_to_delete, to_save, destination_slot)
+def copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   destination_data = JSON.parse(to_save.raw_save_data)
 
   data_to_delete.each_key do |key|
@@ -772,9 +710,11 @@ def copy_data_to_slot(data_to_copy, data_to_delete, to_save, destination_slot)
   destination_data = destination_data.merge(data_to_copy)
   destination_data = JSON.generate(destination_data)
 
-  new_save_data = encode_data(destination_data)
+  to_save.reindex(destination_data)
 
-  save_data_to_slot(new_save_data, destination_slot)
+  new_save_data = to_save.encode_data(destination_data)
+
+  save_data_to_slot(new_save_data, to_save)
 rescue StandardError => e
   puts "XX Copy failed! => #{e}"
 end
@@ -865,9 +805,9 @@ def copy_games_to_save(from_save, to_save, game_list)
   data_to_delete = data_to_delete.values.reduce({}, :merge)
 
   if OPTIONAL_PARAMS[:overwrite] == true || destination_found_games.empty?
-    copy_data_to_slot(data_to_copy, data_to_delete, to_save, to_save.slot)
+    copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   elsif user_confirms_overwrite?(source_found_games & destination_found_games, to_save.slot)
-    copy_data_to_slot(data_to_copy, data_to_delete, to_save, to_save.slot)
+    copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   end
 end
 
@@ -914,13 +854,13 @@ def view_save_game_info(save)
     internal_id = game[:id]
     search = save.indexed_save_data
     stats = get_completion_stats(search, internal_id)
-    next if search.empty?
     print_game_line(game, game_num, stats)
   end
   puts '╚═════════════════════════════════════════════╝'
 end
 
 def print_game_line(game, game_num, stats)
+  return if stats[:playTime] == 'EMPTY'
   puts "║ ##{game_num.to_s.rjust(2,
                                    '0')} - #{display_title(game[:title],
                                                            17)} - #{stats[:playTime] == 'EMPTY' ? '-- EMPTY --' : stats[:playTime]} - #{stats[:hasGift] ? 'X' : '-'}#{stats[:hasGold] ? 'X' : '-'}#{stats[:hasCherry] ? 'X' : '-'} ║"
@@ -978,6 +918,3 @@ if ARGV.count != 0
 end
 
 # main
-from_save = SaveFile.find_or_create_slot(1)
-to_save = SaveFile.find_or_create_slot(3)
-copy_games_to_save(from_save, to_save, [3])
