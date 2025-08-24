@@ -61,11 +61,6 @@ class SaveFile
 
       Base64.decode64(input.readline.force_encoding('UTF-8')).force_encoding('UTF-8')
     end
-
-    # TODO: Unused?
-    # def decode_data(game_data)
-    #   Base64.decode64(game_data.force_encoding('UTF-8')).force_encoding('UTF-8')
-    # end
   end
 
   def filepath(folder: false)
@@ -340,6 +335,7 @@ def handle_view(params, pv)
 
   slot_val = params[params.index('-slot') + 1]
   return if pv.slot_num_invalid?([slot_val])
+
   save = SaveFile.find_or_create_slot(slot_val)
 
   if params.include?('-bk')
@@ -530,12 +526,6 @@ def import_ufodisk(path_to_disk)
   end
 end
 
-def search_for_game_in_data(game_data, internal_id)
-  JSON.parse(game_data).select do |key|
-    key.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/)
-  end
-end
-
 def save_data_to_slot(new_save_data, save)
   save_tool_backup_path = "#{save.filepath(folder: true)}SaveEditorBackups\\"
 
@@ -580,8 +570,8 @@ def copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   new_save_data = SaveFile.encode_data(destination_data)
 
   save_data_to_slot(new_save_data, to_save)
-# rescue StandardError => e
-#   puts "XX Copy failed! => #{e}"
+  rescue StandardError => e
+    puts "XX Copy failed! => #{e}"
 end
 
 def user_confirms_overwrite?(id_list, dest_slot_num, bk: false)
@@ -780,9 +770,3 @@ if ARGV.count != 0
 end
 
 main
-# from_save = SaveFile.find_or_create_slot(1)
-# to_save = SaveFile.find_or_create_slot(3)
-# p to_save.filtered_data
-# view_save_game_info(to_save)
-# # delete_game_data_for_slot([3,5], to_save)
-# copy_games_to_save(from_save, to_save, [3, 5])
