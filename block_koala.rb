@@ -15,7 +15,7 @@ class BlockKoala
       return false if missing_necessary_blocks?
       return false if invalid_block_positions?
 
-      puts ".. #{@id}: Valid! #{$optional_params[:validate_bk] ? '' : '(Skipped necessary blocks check)'}"
+      puts ".. #{@id}: Valid! #{OPTIONAL_PARAMS[:validate_bk] ? '' : '(Skipped necessary blocks check)'}"
       true
     end
 
@@ -39,7 +39,7 @@ class BlockKoala
     end
 
     def missing_necessary_blocks?
-      return false unless $optional_params[:validate_bk]
+      return false unless OPTIONAL_PARAMS[:validate_bk]
 
       if !@code.include?('P')
         fail_with_reason(reason: "#{@id}: No player character (P) in custom level code")
@@ -48,6 +48,7 @@ class BlockKoala
         fail_with_reason(reason: "#{@id}: More than one player (P) in custom level code")
         true
       elsif !@code.include?('R')
+        p @code
         fail_with_reason(reason: "#{@id}: No star block (R) in custom level code")
         true
       elsif !@code.include?('Q')
@@ -131,11 +132,10 @@ class BlockKoala
   end
 end
 
-def print_custom_level_slots(slot_val)
+def print_custom_level_slots(save)
   valid = (51..58).map { |n| "game18_customLevel#{n}" }
-  game_data = decode_file(filepath_for_slot(slot_val))
   ids = []
-  custom_levels = JSON.parse(game_data).each_key do |key|
+  custom_levels = JSON.parse(save.raw_save_data).each_key do |key|
     if valid.include?(key)
       ids.push(key[-2..])
       true
@@ -148,7 +148,7 @@ def print_custom_level_slots(slot_val)
 
   puts
   puts "Type 'view -slot [1/2/3] -bk [51/52/etc]' to see level code"
-  puts "SLOT #{slot_val}:\t║ #51 ║ #52 ║ #53 ║ #54 ║"
+  puts "SLOT #{save.slot}:\t║ #51 ║ #52 ║ #53 ║ #54 ║"
   puts "\t║ [#{ids.include?('51') ? 'X' : ' '}] ║ [#{ids.include?('52') ? 'X' : ' '}] ║ [#{ids.include?('53') ? 'X' : ' '}] ║ [#{ids.include?('54') ? 'X' : ' '}] ║"
   puts "\t║ [#{ids.include?('55') ? 'X' : ' '}] ║ [#{ids.include?('56') ? 'X' : ' '}] ║ [#{ids.include?('57') ? 'X' : ' '}] ║ [#{ids.include?('58') ? 'X' : ' '}] ║"
   puts "\t║ #55 ║ #56 ║ #57 ║ #58 ║"
@@ -162,28 +162,28 @@ def print_custom_bk_map(level_code, slot_val, custom_id)
   puts '╚════════════════╝'
 end
 
-def view_custom_bk_maps(slot_val, custom_ids, level_code: nil)
+def view_custom_bk_maps(save, custom_ids, level_code: nil)
   return print_custom_bk_map(level_code, 'X', 'XX') unless level_code.nil?
 
   level_codes = []
 
   custom_ids.each do |id|
-    game_data = decode_file(filepath_for_slot(slot_val))
+    game_data = save.raw_save_data
     search_for_game_in_data(game_data, GAME_INDEX[:"15"][:id])
     level_code = JSON.parse(game_data).select { |k| k == "game18_customLevel#{id}" }
 
     if level_code.empty?
-      fail_with_reason(reason: "No custom level found for Slot #{slot_val}, id: #{id}")
+      fail_with_reason(reason: "No custom level found for Slot #{save.slot}, id: #{id}")
       return
     end
 
     level_codes.push([level_code["game18_customLevel#{id}"], id])
   end
 
-  level_codes.each { |set| print_custom_bk_map(set[0], slot_val, set[1]) }
+  level_codes.each { |set| print_custom_bk_map(set[0], save.slot, set[1]) }
 end
 
-def export_bk_custom_to_disk(slot_val, custom_vals)
+def export_bk_custom_to_disk(save, custom_vals)
   def format_custom_level_string(code)
     formatted = code
     i = 0
@@ -194,7 +194,7 @@ def export_bk_custom_to_disk(slot_val, custom_vals)
     formatted
   end
 
-  game_data = decode_file(filepath_for_slot(slot_val))
+  game_data = save.raw_save_data
   game_data = search_for_game_in_data(game_data, GAME_INDEX[:"15"][:id])
 
   data_to_export = {}
@@ -222,13 +222,11 @@ def export_bk_custom_to_disk(slot_val, custom_vals)
   end
   data_formatted += '}'
 
-  export_games_to_disk(slot_val, custom_vals, disk_type: 'BK', bk_data: data_formatted)
+  export_games_to_disk(save, custom_vals, bk_data: data_formatted)
 end
 
-def copy_custom_levels_to_save(_source_num, destination_num, custom_id_list, disk_drop: nil)
+def copy_custom_levels_to_save(save, custom_id_list, disk_drop: nil)
   disk_drop.nil? ? raise : disk_drop
-
-  destination_data = decode_file(filepath_for_slot(destination_num))
 
   data_to_copy = {}
   destination_found_levels = []
@@ -242,7 +240,7 @@ def copy_custom_levels_to_save(_source_num, destination_num, custom_id_list, dis
 
     data_to_copy.merge!(level_data)
 
-    search = JSON.parse(destination_data).select { |k| k == key }
+    search = JSON.parse(save.raw_save_data).select { |k| k == key }
 
     unless search.empty?
       destination_found_levels.push(id)
@@ -251,10 +249,10 @@ def copy_custom_levels_to_save(_source_num, destination_num, custom_id_list, dis
   end
 
   if OPTIONAL_PARAMS[:overwrite] == true || destination_found_levels.empty?
-    copy_data_to_slot(data_to_copy, data_to_delete, destination_data, destination_num)
+    copy_data_to_slot(data_to_copy, data_to_delete, save)
   elsif user_confirms_overwrite?(
     destination_found_levels, destination_num, bk: true
   )
-    copy_data_to_slot(data_to_copy, data_to_delete, destination_data, destination_num)
+    copy_data_to_slot(data_to_copy, data_to_delete, save)
   end
 end

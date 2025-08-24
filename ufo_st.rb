@@ -148,7 +148,7 @@ class SaveFile
 
   def reindex(new_raw_save_data)
     debug(m: "Reindexing save data for slot #{@slot}")
-    @indexed_save_data.clear
+    @indexed_save_data&.clear
     @raw_save_data = new_raw_save_data
     @indexed_save_data = build_save_data_index
     @filtered_save_data = filtered_data
@@ -312,18 +312,19 @@ def handle_export(params, pv)
   return if pv.slot_num_invalid?([slot_val])
   return if pv.file_doesnt_exist_for_slots?([slot_val])
 
+  save = SaveFile.find_or_create_slot(slot_val)
+
   if params.include?('-bk')
     custom_vals = params[params.index('-bk') + 1]&.split(',')&.uniq
     return if pv.value_nil?(custom_vals, reason: 'Usage: export -slot 1 -bk 51,52 --output my_bk_custom_pack.ufodisk')
     return if pv.ids_incorrect?(custom_vals, 51..58, reason: '-bk values must be between 51 and 58')
 
-    export_bk_custom_to_disk(slot_val, custom_vals)
+    export_bk_custom_to_disk(save, custom_vals)
   else
     game_vals = params[params.index('-games') + 1]&.split(',')&.uniq
     return if pv.value_nil?(game_vals)
     return if pv.ids_incorrect?(game_vals, 1..50)
 
-    save = SaveFile.find_or_create_slot(slot_val)
     export_games_to_disk(save, game_vals)
   end
 end
@@ -339,18 +340,18 @@ def handle_view(params, pv)
 
   slot_val = params[params.index('-slot') + 1]
   return if pv.slot_num_invalid?([slot_val])
+  save = SaveFile.find_or_create_slot(slot_val)
 
   if params.include?('-bk')
     bk_val = params[params.index('-bk') + 1]&.split(',')&.uniq
     if bk_val.nil?
-      print_custom_level_slots(slot_val)
+      print_custom_level_slots(save)
       return
     end
     return if pv.ids_incorrect?(bk_val, 51..58, reason: "Custom level id incorrect: #{bk_val.join(', ')}")
 
-    view_custom_bk_maps(slot_val, bk_val)
+    view_custom_bk_maps(save, bk_val)
   else
-    save = SaveFile.find_or_create_slot(slot_val)
     view_save_game_info(save)
   end
 end
@@ -390,9 +391,9 @@ def export_games_to_disk(save, game_list, bk_data: nil)
       fail_with_reason(reason: "No game data found in slot #{save.slot} for game ids: \n!! ##{game_list.join(', #')}")
       return
     end
-  end
 
-  data_to_export = data_to_export.values.reduce({}, :merge)
+    data_to_export = data_to_export.values.reduce({}, :merge)
+  end
 
   begin
     data_to_export = bk_data || JSON.generate(data_to_export)
@@ -461,7 +462,7 @@ def import_ufodisk(path_to_disk)
     input = get_user_input.split(' ')
     set_optional_params(input) if input.include?('--no-validate')
 
-    bk = BlockKoala.new(level_codes: parsed.map { |k, v| [k, v] }, parsed_data: parsed)
+    bk = BlockKoala.new(level_codes: parsed.map { |k, v| [k, v] })
 
     unless bk.levels.all?(&:valid?)
       puts '(Press Enter to exit)'
@@ -491,7 +492,8 @@ def import_ufodisk(path_to_disk)
       valid_input = true
     end
 
-    copy_custom_levels_to_save(nil, slot_val, custom_vals, disk_drop: parsed)
+    save = SaveFile.find_or_create_slot(slot_val)
+    copy_custom_levels_to_save(save, custom_vals, disk_drop: parsed)
   when 'GE'
     puts 'Type: Game Export'
     puts
@@ -578,8 +580,8 @@ def copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   new_save_data = SaveFile.encode_data(destination_data)
 
   save_data_to_slot(new_save_data, to_save)
-rescue StandardError => e
-  puts "XX Copy failed! => #{e}"
+# rescue StandardError => e
+#   puts "XX Copy failed! => #{e}"
 end
 
 def user_confirms_overwrite?(id_list, dest_slot_num, bk: false)
@@ -661,7 +663,6 @@ def delete_game_data_for_slot(game_list, save)
 
     source_data = JSON.generate(source_data)
     save.reindex(source_data)
-
     new_save_data = SaveFile.encode_data(source_data)
 
     save_data_to_slot(new_save_data, save)
