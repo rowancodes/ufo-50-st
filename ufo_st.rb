@@ -55,7 +55,7 @@ class SaveFile
 
       (Base64.encode64(game_data.force_encoding('UTF-8')).delete("\n") + end_char).force_encoding('UTF-8')
     end
-    
+
     def decode_file(filepath)
       input = File.open(filepath, 'r:utf-8')
 
@@ -70,6 +70,7 @@ class SaveFile
 
   def filepath(folder: false)
     return disk_path if disk_path
+
     game_saves_location = "#{ENV['LOCALAPPDATA']}\\ufo50\\"
     return game_saves_location if folder == true
 
@@ -92,7 +93,9 @@ class SaveFile
 
     (0..50).each do |game_num|
       internal_id = GAME_INDEX[game_num.to_s.to_sym][:id]
-      search = parsed.select { |k, _v| k.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/) }
+      search = parsed.select do |k, _v|
+        k.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/)
+      end
       index[game_num] = search unless search.empty?
     end
 
@@ -117,7 +120,7 @@ class SaveFile
     # nested hashes, key { key { value } }
     filtered_save_data.each do |top_key, hash|
       banned_keys = hash.select do |nested_key, _v|
-        filtered_terms.any? do |term| 
+        filtered_terms.any? do |term|
           nested_key.include?(term)
         end
       end
@@ -144,7 +147,7 @@ class SaveFile
   end
 
   def reindex(new_raw_save_data)
-    debug(m: "Reindexing save data for slot #{@slot}")  
+    debug(m: "Reindexing save data for slot #{@slot}")
     @indexed_save_data.clear
     @raw_save_data = new_raw_save_data
     @indexed_save_data = build_save_data_index
@@ -186,13 +189,13 @@ def get_help(logo: true)
     ['-slot',   'source save slot [1/2/3]'],
     ['-to',     'destination save slot [1/2/3]'],
     ['-games',  'list of games to copy/export'],
-    ['-bk',     "for export/import/view of block\n\t\t\t koala custom levels"],
+    ['-bk',     "for export/import/view of block\n\t\t\t koala custom levels"]
   ]
 
   optional = [
     ['--output',     'specify an output filename'],
     ['--no-verify',  "does not verify game choice\n\t\t\t before continuing (be careful!)"],
-    ['--overwrite',  "overwrites existing game data\n\t\t\t without asking (be careful!)"],
+    ['--overwrite',  "overwrites existing game data\n\t\t\t without asking (be careful!)"]
   ]
 
   puts 'Usage:'
@@ -201,7 +204,7 @@ def get_help(logo: true)
   params.each { |param, desc| puts "\t#{param.ljust(10)}=>\t#{desc}" unless param.empty? || desc.empty? }
   puts 'Optional:'
   optional.each { |opt, desc| puts "\t#{opt.ljust(12)}=>\t#{desc}" unless opt.empty? || desc.empty? }
-  
+
   puts 'v1.1.4'
 end
 
@@ -409,8 +412,8 @@ def export_games_to_disk(save, game_list, bk_data: nil)
     return unless %w[y yes].include?(input)
 
     system('explorer', "/select,#{save_tool_disk_path}#{filename}")
-  # rescue StandardError => e
-  #   puts "XX Export failed: #{e}"
+  rescue StandardError => e
+    puts "XX Export failed: #{e}"
   end
 end
 
@@ -492,9 +495,10 @@ def import_ufodisk(path_to_disk)
   when 'GE'
     puts 'Type: Game Export'
     puts
-    disk_save = SaveFile.create_from_disk(path_to_disk)
 
+    disk_save = SaveFile.create_from_disk(path_to_disk)
     view_save_game_info(disk_save)
+
     puts '.. Copy which games? Usage: -slot [1/2/3] -games 24,39,48'
     valid_input = false
     until valid_input
@@ -525,7 +529,9 @@ def import_ufodisk(path_to_disk)
 end
 
 def search_for_game_in_data(game_data, internal_id)
-  JSON.parse(game_data).select { |key| key.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/) }
+  JSON.parse(game_data).select do |key|
+    key.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/)
+  end
 end
 
 def save_data_to_slot(new_save_data, save)
@@ -645,8 +651,6 @@ def delete_game_data_for_slot(game_list, save)
   return unless OPTIONAL_PARAMS[:overwrite] == true || user_confirms_overwrite?(found_games, save.slot)
 
   data_to_delete = data_to_delete.values.reduce({}, :merge)
-
-
 
   begin
     source_data = JSON.parse(save.raw_save_data)
