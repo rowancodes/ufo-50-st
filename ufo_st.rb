@@ -20,12 +20,12 @@ SAVE_INDEX = {
 }
 
 class SaveFile
-  def initialize(slot: nil)
+  def initialize(slot: nil, disk_path: nil)
     @slot = slot
     @raw_save_data = nil
     @indexed_save_data = nil
     @filtered_save_data = nil
-    @disk_path = nil
+    @disk_path = disk_path
   end
 
   attr_accessor :slot, :raw_save_data, :indexed_save_data, :filtered_save_data, :disk_path
@@ -39,38 +39,45 @@ class SaveFile
       SAVE_INDEX[slot_num] = new(slot: slot_num)
     end
 
+    def create_from_disk(disk_path)
+      debug(m: "Creating object: SaveFile for disk #{disk_path}")
+      new(disk_path: disk_path)
+    end
+
     def filepath_for_slot(slot_num)
       game_saves_location = "#{ENV['LOCALAPPDATA']}\\ufo50\\"
 
       "#{game_saves_location}save#{slot_num}.ufo"
     end
+
+    def encode_data(game_data)
+      end_char = "\u0000".force_encoding('UTF-8')
+
+      (Base64.encode64(game_data.force_encoding('UTF-8')).delete("\n") + end_char).force_encoding('UTF-8')
+    end
+    
+    def decode_file(filepath)
+      input = File.open(filepath, 'r:utf-8')
+
+      Base64.decode64(input.readline.force_encoding('UTF-8')).force_encoding('UTF-8')
+    end
+
+    # TODO: Unused?
+    # def decode_data(game_data)
+    #   Base64.decode64(game_data.force_encoding('UTF-8')).force_encoding('UTF-8')
+    # end
   end
 
   def filepath(folder: false)
+    return disk_path if disk_path
     game_saves_location = "#{ENV['LOCALAPPDATA']}\\ufo50\\"
     return game_saves_location if folder == true
 
     "#{game_saves_location}save#{@slot}.ufo"
   end
 
-  def decode_file(filepath)
-    input = File.open(filepath, 'r:utf-8')
-
-    Base64.decode64(input.readline.force_encoding('UTF-8')).force_encoding('UTF-8')
-  end
-
-  def encode_data(game_data)
-    end_char = "\u0000".force_encoding('UTF-8')
-
-    (Base64.encode64(game_data.force_encoding('UTF-8')).delete("\n") + end_char).force_encoding('UTF-8')
-  end
-
-  def decode_data(game_data)
-    Base64.decode64(game_data.force_encoding('UTF-8')).force_encoding('UTF-8')
-  end
-
   def raw_save_data
-    @raw_save_data ||= decode_file(filepath)
+    @raw_save_data ||= self.class.decode_file(filepath)
   end
 
   def indexed_save_data
@@ -78,7 +85,7 @@ class SaveFile
   end
 
   def build_save_data_index
-    debug(m: "Building save data index for slot #{@slot}")
+    debug(m: "Building save data index for Save #{@slot}")
 
     parsed = JSON.parse(raw_save_data)
     index = {}
@@ -133,7 +140,7 @@ class SaveFile
   end
 
   def force_indexing
-    indexed_save_data
+    indexed_save_data unless disk_path
   end
 
   def reindex(new_raw_save_data)
@@ -313,7 +320,8 @@ def handle_export(params, pv)
     return if pv.value_nil?(game_vals)
     return if pv.ids_incorrect?(game_vals, 1..50)
 
-    export_games_to_disk(slot_val, game_vals)
+    save = SaveFile.find_or_create_slot(slot_val)
+    export_games_to_disk(save, game_vals)
   end
 end
 
@@ -385,8 +393,8 @@ def export_games_to_disk(save, game_list, bk_data: nil)
 
   begin
     data_to_export = bk_data || JSON.generate(data_to_export)
-    disk_data = encode_data(data_to_export) unless bk_data
-    filename = disk_export_filename(game_list, bk_data: bk_data)
+    disk_data = SaveFile.encode_data(data_to_export) unless bk_data
+    filename = save.disk_export_filename(game_list, bk_data: bk_data)
 
     File.open("#{save_tool_disk_path}#{filename}", 'w:UTF-8') do |file|
       data = -> { bk_data.nil? ? disk_data : bk_data }
@@ -401,8 +409,8 @@ def export_games_to_disk(save, game_list, bk_data: nil)
     return unless %w[y yes].include?(input)
 
     system('explorer', "/select,#{save_tool_disk_path}#{filename}")
-  rescue StandardError => e
-    puts "XX Export failed: #{e}"
+  # rescue StandardError => e
+  #   puts "XX Export failed: #{e}"
   end
 end
 
@@ -414,7 +422,7 @@ def ufodisk_type(path_to_disk)
   end
 
   def check_ge(path_to_disk)
-    file_data = decode_file(path_to_disk)
+    file_data = SaveFile.decode_file(path_to_disk)
     JSON.parse(file_data)
     'GE'
   end
@@ -484,7 +492,9 @@ def import_ufodisk(path_to_disk)
   when 'GE'
     puts 'Type: Game Export'
     puts
-    view_save_game_info(nil, disk_path: path_to_disk)
+    disk_save = SaveFile.create_from_disk(path_to_disk)
+
+    view_save_game_info(disk_save)
     puts '.. Copy which games? Usage: -slot [1/2/3] -games 24,39,48'
     valid_input = false
     until valid_input
@@ -505,7 +515,8 @@ def import_ufodisk(path_to_disk)
       valid_input = true
     end
 
-    copy_games_to_save(nil, slot_val, game_val, disk_drop: path_to_disk)
+    to_save = SaveFile.find_or_create_slot(slot_val)
+    copy_games_to_save(disk_save, to_save, game_val)
   else
     fail_with_reason(reason: 'UFODISK type unknown! (Press enter to exit)')
     get_user_input
@@ -558,7 +569,7 @@ def copy_data_to_slot(data_to_copy, data_to_delete, to_save)
 
   to_save.reindex(destination_data)
 
-  new_save_data = to_save.encode_data(destination_data)
+  new_save_data = SaveFile.encode_data(destination_data)
 
   save_data_to_slot(new_save_data, to_save)
 rescue StandardError => e
@@ -647,7 +658,7 @@ def delete_game_data_for_slot(game_list, save)
     source_data = JSON.generate(source_data)
     save.reindex(source_data)
 
-    new_save_data = save.encode_data(source_data)
+    new_save_data = SaveFile.encode_data(source_data)
 
     save_data_to_slot(new_save_data, save)
   rescue StandardError => e
@@ -688,6 +699,7 @@ def display_title(title, limit)
 end
 
 def view_save_game_info(save)
+  p save
   save.force_indexing
 
   puts "╔══╣ #{!save.disk_path.nil? ? 'UFODSK' : "SLOT #{save.slot}"} ╠═════════════════════════════════╗"
@@ -736,7 +748,7 @@ end
 
 def check_for_diskdrop
   puts_logo
-  if ARGV.empty?.! && File.exist?(ARGV[0]) && ARGV[0].end_with?('.ufodisk')
+  if !ARGV.empty? && File.exist?(ARGV[0]) && ARGV[0].end_with?('.ufodisk')
     puts_disk_detected
     import_ufodisk(ARGV[0])
   else
