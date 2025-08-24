@@ -256,3 +256,9 @@ def copy_custom_levels_to_save(save, custom_id_list, disk_drop: nil)
     copy_data_to_slot(data_to_copy, data_to_delete, save)
   end
 end
+
+def search_for_game_in_data(game_data, internal_id)
+  JSON.parse(game_data).select do |key|
+    key.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/)
+  end
+end
