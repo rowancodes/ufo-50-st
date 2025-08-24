@@ -11,7 +11,7 @@ require_relative 'game_index'
 require_relative 'validate_parameters'
 require_relative 'block_koala'
 
-OPTIONAL_PARAMS = { output: nil, no_verify: false, overwrite: false, verbose: true, validate_bk: true }
+OPTIONAL_PARAMS = { output: nil, no_verify: false, overwrite: false, verbose: false, validate_bk: true }
 
 SAVE_INDEX = {
   "1": nil,
