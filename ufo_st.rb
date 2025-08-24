@@ -30,13 +30,19 @@ class SaveFile
 
   attr_accessor :slot, :raw_save_data, :indexed_save_data, :filtered_save_data, :disk_path
 
-  class << self 
+  class << self
     def find_or_create_slot(slot_num)
       indexed = SAVE_INDEX[slot_num]
       return indexed unless indexed.nil?
 
       debug(m: "Creating object: SaveFile ##{slot_num}")
       SAVE_INDEX[slot_num] = new(slot: slot_num)
+    end
+
+    def filepath_for_slot(slot_num)
+      game_saves_location = "#{ENV['LOCALAPPDATA']}\\ufo50\\"
+
+      "#{game_saves_location}save#{slot_num}.ufo"
     end
   end
 
@@ -49,7 +55,7 @@ class SaveFile
 
   def decode_file(filepath)
     input = File.open(filepath, 'r:utf-8')
-    
+
     Base64.decode64(input.readline.force_encoding('UTF-8')).force_encoding('UTF-8')
   end
 
@@ -79,7 +85,7 @@ class SaveFile
 
     (0..50).each do |game_num|
       internal_id = GAME_INDEX[game_num.to_s.to_sym][:id]
-      search = parsed.select { |k, _v| k.match(/\bgame#{internal_id}[^0-9][a-z]+|game0+[a-z][^0-9]+#{internal_id}\b/) }
+      search = parsed.select { |k, _v| k.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/) }
       index[game_num] = search unless search.empty?
     end
 
@@ -89,22 +95,29 @@ class SaveFile
   # filter out any save info not to copy
   def filtered_data
     return @filtered_save_data unless @filtered_save_data.nil?
+
     debug(m: "Generating filtered data for slot #{@slot} because it was nil")
     filtered_save_data = indexed_save_data.dup
 
     filtered_terms = [
+      'profileLanguage',   # don't copy someones language settings
+      'game0_libraryBG',   # don't copy bg
       'randSortOrder',     # saves track random sort order
       'HS NAME PREV',      # hiscores previous input
       '18_customLevel'     # do not export BK custom levels unless explicitly stated
     ]
 
     # nested hashes, key { key { value } }
-    @indexed_save_data.select do |_k, key|
-      filtered_terms.any? do |term|
-        key.include?(term)
+    filtered_save_data.each do |top_key, hash|
+      banned_keys = hash.select do |nested_key, _v|
+        filtered_terms.any? do |term| 
+          nested_key.include?(term)
+        end
       end
-    end.each_key do |k|
-      filtered_save_data.delete(k)
+
+      banned_keys.each_key do |banned_key|
+        filtered_save_data[top_key].delete(banned_key)
+      end
     end
 
     @filtered_save_data = filtered_save_data
@@ -112,11 +125,9 @@ class SaveFile
 
   def search_for(game_list)
     internal_ids = game_list.map { |num| GAME_INDEX[num.to_s.to_sym][:id] }
-    search = filtered_data.slice(0, *game_list)
-    
-    if search[0]
-      search[0] = search[0].select { |k, _v| k.end_with?(*internal_ids) }
-    end
+    search = filtered_data.slice(0, *game_list.map(&:to_i))
+
+    search[0] = search[0].select { |k, _v| k.match(/(?<!\d)(#{internal_ids.map(&:to_i).join('|')})\z/) } if search[0]
 
     search
   end
@@ -126,104 +137,65 @@ class SaveFile
   end
 
   def reindex(new_raw_save_data)
-    debug(m: "Reindexing save data for slot #{@slot}")
+    debug(m: "Reindexing save data for slot #{@slot}")  
     @indexed_save_data.clear
     @raw_save_data = new_raw_save_data
     @indexed_save_data = build_save_data_index
     @filtered_save_data = filtered_data
   end
-end
 
-def set_optional_params(params)
-  if params.include?('--output')
-    arg_index = params.index('--output') + 1
-    OPTIONAL_PARAMS[:output] = params[arg_index]
+  def profile_name
+    name = JSON.parse(raw_save_data).select { |key| key.include?('game0_profileName') }
+    name.nil? ? 'EXPORT' : name['game0_profileName'].to_s
   end
 
-  OPTIONAL_PARAMS[:no_verify] = true if params.include?('--no-verify')
-  OPTIONAL_PARAMS[:overwrite] = true if params.include?('--overwrite')
-  OPTIONAL_PARAMS[:verbose] = true if params.include?('--verbose')
-  OPTIONAL_PARAMS[:validate_bk] = false if params.include?('--no-validate')
-end
-
-def print_custom_level_slots(slot_val)
-  valid = (51..58).map { |n| "game18_customLevel#{n}" }
-  game_data = decode_file(filepath_for_slot(slot_val))
-  ids = []
-  custom_levels = JSON.parse(game_data).each_key do |key|
-    if valid.include?(key)
-      ids.push(key[-2..])
-      true
+  def disk_export_filename(game_list, bk_data: nil)
+    prefix = !bk_data.nil? ? "BK-CUSTOM#{slot}" : "#{profile_name}"
+    if OPTIONAL_PARAMS[:output]
+      "#{OPTIONAL_PARAMS[:output].split('.').first}.ufodisk"
     else
-      false
+      "#{prefix}-#{game_list.join('-')}-#{DateTime.now.strftime('%Y-%m-%d-%H-%M-%S')}.ufodisk"
     end
   end
+end
 
-  return if custom_levels.empty?
-
+def get_help(logo: true)
   puts
-  puts "Type 'view -slot [1/2/3] -bk [51/52/etc]' to see level code"
-  puts "SLOT #{slot_val}:\t║ #51 ║ #52 ║ #53 ║ #54 ║"
-  puts "\t║ [#{ids.include?('51') ? 'X' : ' '}] ║ [#{ids.include?('52') ? 'X' : ' '}] ║ [#{ids.include?('53') ? 'X' : ' '}] ║ [#{ids.include?('54') ? 'X' : ' '}] ║"
-  puts "\t║ [#{ids.include?('55') ? 'X' : ' '}] ║ [#{ids.include?('56') ? 'X' : ' '}] ║ [#{ids.include?('57') ? 'X' : ' '}] ║ [#{ids.include?('58') ? 'X' : ' '}] ║"
-  puts "\t║ #55 ║ #56 ║ #57 ║ #58 ║"
-end
+  puts_logo if logo == true
 
-def print_games_to_screen
-  def tab_amount(game)
-    return "\t" if game[:title].length >= 12
+  commands = [
+    ['help',    'displays this information'],
+    ['view',    'view game data for slot'],
+    ['copy',    'copy games from one save to another'],
+    ['export',  "exports games to a .ufodisk file\n\t\t\t to share w/ your friends :3"],
+    ['import',  'displays import help'],
+    ['delete',  'deletes game data for slot'],
+    ['goals',   'show goals for games'],
+    ['list',    'list ufosoft games'],
+    ['exit',    'closes the program']
+  ]
 
-    "\t\t" if game[:title].length >= 5
-  end
+  params = [
+    ['-slot',   'source save slot [1/2/3]'],
+    ['-to',     'destination save slot [1/2/3]'],
+    ['-games',  'list of games to copy/export'],
+    ['-bk',     "for export/import/view of block\n\t\t\t koala custom levels"],
+  ]
 
-  puts '╔══════════╣ UFOSOFT LIBRARY ╠══════════╗'
-  puts '║                                       ║'
-  GAME_INDEX.each do |num, game|
-    puts "║  ##{num.to_s.rjust(2, '0')} - #{game[:filename]} - #{game[:title]}#{tab_amount(game)}║"
-  end
-  puts '╚═══════════════════════════════════════╝'
-end
+  optional = [
+    ['--output',     'specify an output filename'],
+    ['--no-verify',  "does not verify game choice\n\t\t\t before continuing (be careful!)"],
+    ['--overwrite',  "overwrites existing game data\n\t\t\t without asking (be careful!)"],
+  ]
 
-def print_goals_for_games(game_vals)
-  puts '║'
-  game_vals.each do |game_num, game|
-    game = GAME_INDEX[game_num.to_s.to_sym]
-    puts "║  #{game[:title]}:"
-    puts "║  \tGARDEN: #{game[:garden]}"
-    puts "║  \tGOLD: #{game[:gold]}"
-    puts "║  \tCHERRY: #{game[:cherry]}"
-    puts "║  \tDARK CHERRY: #{game[:dark_cherry]}"
-    puts '║'
-  end
-end
-
-def print_custom_bk_map(level_code, slot_val, custom_id)
-  puts "╔════╣ #{slot_val}:#{custom_id} ╠════╗"
-  12.times do |y|
-    puts "║#{level_code[(y * 16)...((y * 16) + 16)].gsub('0', '.')}║"
-  end
-  puts '╚════════════════╝'
-end
-
-def view_custom_bk_maps(slot_val, custom_ids, level_code: nil)
-  return print_custom_bk_map(level_code, 'X', 'XX') unless level_code.nil?
-
-  level_codes = []
-
-  custom_ids.each do |id|
-    game_data = decode_file(filepath_for_slot(slot_val))
-    search_for_game_in_data(game_data, GAME_INDEX[:"15"][:id])
-    level_code = JSON.parse(game_data).select { |k| k == "game18_customLevel#{id}" }
-
-    if level_code.empty?
-      fail_with_reason(reason: "No custom level found for Slot #{slot_val}, id: #{id}")
-      return
-    end
-
-    level_codes.push([level_code["game18_customLevel#{id}"], id])
-  end
-
-  level_codes.each { |set| print_custom_bk_map(set[0], slot_val, set[1]) }
+  puts 'Usage:'
+  commands.each { |cmd, desc| puts "\t#{cmd.ljust(8)}=>\t#{desc}" unless cmd.empty? || desc.empty? }
+  puts 'Params:'
+  params.each { |param, desc| puts "\t#{param.ljust(10)}=>\t#{desc}" unless param.empty? || desc.empty? }
+  puts 'Optional:'
+  optional.each { |opt, desc| puts "\t#{opt.ljust(12)}=>\t#{desc}" unless opt.empty? || desc.empty? }
+  
+  puts 'v1.1.4'
 end
 
 def puts_logo
@@ -254,35 +226,6 @@ def puts_disk_detected
   puts
 end
 
-def get_help(logo: true)
-  puts
-  puts_logo if logo == true
-  puts 'Usage:'
-  puts "\thelp\t=>\tdisplays this information"
-  puts "\tview\t=>\tview game data for slot"
-  puts "\tcopy\t=>\tcopy games from one save to another"
-  puts "\texport\t=>\texports games to a .ufodisk file"
-  puts "\t\t\t to share w/ your friends :3"
-  puts "\timport\t=>\tdisplays import help"
-  puts "\tdelete\t=>\tdeletes game data for slot"
-  puts "\tgoals\t=>\tshow goals for games"
-  puts "\tlist\t=>\tlist ufosoft games"
-  puts "\texit\t=>\tcloses the program"
-  puts 'Params:'
-  puts "\t-slot\t=>\tsource save slot [1/2/3]"
-  puts "\t-to\t=>\tdestination save slot [1/2/3]"
-  puts "\t-games\t=>\tlist of games to copy/export"
-  puts "\t-bk\t=>\tfor export/import/view of block"
-  puts "\t\t\t koala custom levels"
-  puts 'Optional:'
-  puts "\t--output    =>\tspecify an output filename"
-  puts "\t--no-verify =>\tdoes not verify game choice"
-  puts "\t\t\tbefore continuing (be careful!)"
-  puts "\t--overwrite =>\toverwrites existing game data"
-  puts "\t\t\twithout asking (be careful!)"
-  puts 'v1.1.4'
-end
-
 def get_user_input
   print '>> '
   input = $stdin.gets.chomp
@@ -300,48 +243,6 @@ def debug(m: '???')
   puts "DEBUG: #{m}" if OPTIONAL_PARAMS[:verbose]
 end
 
-def export_bk_custom_to_disk(slot_val, custom_vals)
-  def format_custom_level_string(code)
-    formatted = code
-    i = 0
-    (0..192).step(16) do |n|
-      formatted.insert(n + i, "\n")
-      i += 1
-    end
-    formatted
-  end
-
-  game_data = decode_file(filepath_for_slot(slot_val))
-  game_data = search_for_game_in_data(game_data, GAME_INDEX[:"15"][:id])
-
-  data_to_export = {}
-
-  custom_vals.each do |id|
-    level_code = game_data.select { |k| k == "game18_customLevel#{id}" }
-
-    if level_code.empty?
-      fail_with_reason(reason: "No custom level found for Slot #{slot_val}, id: #{id}")
-      return
-    end
-
-    data_to_export.merge!(level_code)
-  end
-
-  if data_to_export.empty?
-    fail_with_reason(reason: "No block koala custom levels found in Slot #{slot_val}, ids: #{custom_vals.join(', ')}")
-    return
-  end
-
-  last = data_to_export.length - 1
-  data_formatted = '{'
-  data_to_export.each_with_index do |(_k, v), i|
-    data_formatted += "\n\"BK_Custom#{i + 1}\":\n\"#{format_custom_level_string(v)}\"#{i == last ? '' : ','}\n"
-  end
-  data_formatted += '}'
-
-  export_games_to_disk(slot_val, custom_vals, disk_type: 'BK', bk_data: data_formatted)
-end
-
 def validate_parameters(params)
   pv = ValidateParameters.new
   params = params.split(' ')
@@ -354,7 +255,7 @@ def validate_parameters(params)
     'help' => -> { get_help },
     'copy' => -> { handle_copy(params, pv) },
     'export' => -> { handle_export(params, pv) },
-    'import' => -> { handle_import },
+    'import' => -> { display_import_help },
     'list' => -> { print_games_to_screen },
     'view' => -> { handle_view(params, pv) },
     'goals' => -> { handle_goals(params, pv) },
@@ -416,7 +317,7 @@ def handle_export(params, pv)
   end
 end
 
-def handle_import
+def display_import_help
   fail_with_reason(reason: 'Drag and drop a .ufodisk file onto the exe!', error: false)
   fail_with_reason(reason: 'or from command line:', error: false)
   fail_with_reason(reason: '.\\ufo-st.exe "C:\\path\\to\\file\\my_cool_disk.ufodisk"', error: false)
@@ -438,7 +339,8 @@ def handle_view(params, pv)
 
     view_custom_bk_maps(slot_val, bk_val)
   else
-    view_save_game_info(slot_val)
+    save = SaveFile.find_or_create_slot(slot_val)
+    view_save_game_info(save)
   end
 end
 
@@ -465,56 +367,36 @@ def handle_delete(params, pv)
   delete_game_data_for_slot(game_val, to_save)
 end
 
-def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
-  save_tool_disk_path = "#{filepath_for_slot(nil, folder: true)}SaveEditorDiskExports\\"
+def export_games_to_disk(save, game_list, bk_data: nil)
+  save_tool_disk_path = "#{save.filepath(folder: true)}SaveEditorDiskExports\\"
   Dir.mkdir(save_tool_disk_path) unless File.exist?(save_tool_disk_path)
 
   unless bk_data
-    game_data = decode_file(filepath_for_slot(slot_val))
-
-    found_games = []
-    data_to_export = {}
-
-    games_list.each do |game_num|
-      game = GAME_INDEX[game_num.to_s.to_sym]
-      internal_id = game[:id]
-
-      search = filter_data(search_for_game_in_data(game_data, internal_id))
-
-      unless search.empty?
-        found_games.push(game_num)
-        data_to_export.merge!(search)
-      end
-    end
+    found_games = games_in_common(save, game_list)
+    data_to_export = save.search_for(game_list)
 
     if found_games.empty?
-      fail_with_reason(reason: "No game data found in slot #{slot_val} for game ids: \n!! ##{games_list.join(', #')}")
+      fail_with_reason(reason: "No game data found in slot #{save.slot} for game ids: \n!! ##{game_list.join(', #')}")
       return
     end
   end
 
+  data_to_export = data_to_export.values.reduce({}, :merge)
+
   begin
     data_to_export = bk_data || JSON.generate(data_to_export)
     disk_data = encode_data(data_to_export) unless bk_data
-    filename = if !OPTIONAL_PARAMS[:output].nil?
-                 "#{OPTIONAL_PARAMS[:output].split('.').first}.ufodisk"
-               elsif disk_type == 'BK'
-                 "BK-SLOT#{slot_val}-#{games_list.join('-')}-#{DateTime.now.strftime('%Y-%m-%d-%H-%M-%S')}.ufodisk"
-               else
-                 "#{profile_name(game_data)}-#{games_list.join('-')}-#{DateTime.now.strftime('%Y-%m-%d-%H-%M-%S')}.ufodisk"
-               end
+    filename = disk_export_filename(game_list, bk_data: bk_data)
 
     File.open("#{save_tool_disk_path}#{filename}", 'w:UTF-8') do |file|
-      if bk_data
-        file.write(bk_data.force_encoding('UTF-8'))
-      else
-        file.write(disk_data.force_encoding('UTF-8'))
-      end
+      data = -> { bk_data.nil? ? disk_data : bk_data }
+      file.write(data.call.force_encoding('UTF-8'))
     end
 
     puts '!! Exported successfully, to:'
     puts "!! #{save_tool_disk_path}#{filename}"
     puts '!! Open folder? (y/N)'
+
     input = get_user_input
     return unless %w[y yes].include?(input)
 
@@ -522,11 +404,6 @@ def export_games_to_disk(slot_val, games_list, disk_type: nil, bk_data: nil)
   rescue StandardError => e
     puts "XX Export failed: #{e}"
   end
-end
-
-def profile_name(game_data)
-  name = JSON.parse(game_data).select { |key| key.include?('game0_profileName') }
-  name.nil? ? 'EXPORT' : name['game0_profileName'].to_s
 end
 
 def ufodisk_type(path_to_disk)
@@ -636,39 +513,8 @@ def import_ufodisk(path_to_disk)
   end
 end
 
-def search_for_game_in_data(game_data, game_id)
-  JSON.parse(game_data).select { |key| key.match(/\bgame#{game_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{game_id}\b/) }
-end
-
-def delete_game_data_for_slot(game_list, save)
-  found_games = games_in_common(save, game_list)
-  data_to_delete = save.search_for(game_list)
-
-  if found_games.empty?
-    fail_with_reason(reason: "No game data found in slot #{save.slot} for game ids: \n!! ##{game_list.join(', #')}")
-    return
-  end
-
-  return unless OPTIONAL_PARAMS[:overwrite] == true || user_confirms_overwrite?(found_games, save.slot)
-
-  data_to_delete = data_to_delete.values.reduce({}, :merge)
-
-  begin
-    source_data = JSON.parse(save.raw_save_data)
-
-    data_to_delete.each_key do |key|
-      source_data.delete(key)
-    end
-
-    source_data = JSON.generate(source_data)
-    save.reindex(source_data)
-
-    new_save_data = save.encode_data(source_data)
-
-    save_data_to_slot(new_save_data, save)
-  rescue StandardError => e
-    puts "XX Delete failed! => #{e}"
-  end
+def search_for_game_in_data(game_data, internal_id)
+  JSON.parse(game_data).select { |key| key.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/) }
 end
 
 def save_data_to_slot(new_save_data, save)
@@ -724,52 +570,17 @@ def user_confirms_overwrite?(id_list, dest_slot_num, bk: false)
   puts "!! #{id_list.map { |num| GAME_INDEX[num.to_s.to_sym][:title] }.join(', ')}" unless bk
   puts "!! #{id_list.join(', ')}" if bk
   puts '!! PROCEED? (y/N)'
-  
+
   input = get_user_input
   return true if %w[y yes].include?(input)
-
 
   puts '!! Copy cancelled!'
   false
 end
 
-def copy_custom_levels_to_save(_source_num, destination_num, custom_id_list, disk_drop: nil)
-  disk_drop.nil? ? raise : disk_drop
-
-  destination_data = decode_file(filepath_for_slot(destination_num))
-
-  data_to_copy = {}
-  destination_found_levels = []
-  data_to_delete = {}
-
-  custom_id_list.each_with_index do |id, index|
-    key = "game18_customLevel#{id}"
-    disk_drop_level = disk_drop["BK_Custom#{index + 1}"]
-    level_data = {}
-    level_data[key.to_sym] = disk_drop_level
-
-    data_to_copy.merge!(level_data)
-
-    search = JSON.parse(destination_data).select { |k| k == key }
-
-    unless search.empty?
-      destination_found_levels.push(id)
-      data_to_delete.merge!(search)
-    end
-  end
-
-  if OPTIONAL_PARAMS[:overwrite] == true || destination_found_levels.empty?
-    copy_data_to_slot(data_to_copy, data_to_delete, destination_data, destination_num)
-  elsif user_confirms_overwrite?(
-    destination_found_levels, destination_num, bk: true
-  )
-    copy_data_to_slot(data_to_copy, data_to_delete, destination_data, destination_num)
-  end
-end
-
 def games_in_common(save, game_list)
   keys = save.indexed_save_data.keys
-  game_list.select do |id|
+  game_list.map(&:to_i).select do |id|
     keys.include?(id)
   end
 end
@@ -777,16 +588,16 @@ end
 def copy_games_to_save(from_save, to_save, game_list)
   source_found_games = games_in_common(from_save, game_list)
   destination_found_games = games_in_common(to_save, game_list)
-  
+
   data_to_copy = from_save.search_for(game_list)
   data_to_delete = to_save.search_for(game_list)
 
   if source_found_games.empty?
-    unless from_save.disk_path.nil?
+    if from_save.disk_path.nil?
+      fail_with_reason(reason: "No game data found in slot #{from_save.slot} for game ids: \n!! ##{game_list.join(', #')}")
+    else
       fail_with_reason(reason: "No game data found in ufodisk for game ids: \n!! ##{game_list.join(', #')} (Press enter to exit)")
       get_user_input
-    else
-      fail_with_reason(reason: "No game data found in slot #{from_save.slot} for game ids: \n!! ##{game_list.join(', #')}")
     end
 
     return
@@ -808,6 +619,39 @@ def copy_games_to_save(from_save, to_save, game_list)
     copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   elsif user_confirms_overwrite?(source_found_games & destination_found_games, to_save.slot)
     copy_data_to_slot(data_to_copy, data_to_delete, to_save)
+  end
+end
+
+def delete_game_data_for_slot(game_list, save)
+  found_games = games_in_common(save, game_list)
+  data_to_delete = save.search_for(game_list)
+
+  if found_games.empty?
+    fail_with_reason(reason: "No game data found in slot #{save.slot} for game ids: \n!! ##{game_list.join(', #')}")
+    return
+  end
+
+  return unless OPTIONAL_PARAMS[:overwrite] == true || user_confirms_overwrite?(found_games, save.slot)
+
+  data_to_delete = data_to_delete.values.reduce({}, :merge)
+
+
+
+  begin
+    source_data = JSON.parse(save.raw_save_data)
+
+    data_to_delete.each_key do |key|
+      source_data.delete(key)
+    end
+
+    source_data = JSON.generate(source_data)
+    save.reindex(source_data)
+
+    new_save_data = save.encode_data(source_data)
+
+    save_data_to_slot(new_save_data, save)
+  rescue StandardError => e
+    puts "XX Delete failed! => #{e}"
   end
 end
 
@@ -847,7 +691,7 @@ def view_save_game_info(save)
   save.force_indexing
 
   puts "╔══╣ #{!save.disk_path.nil? ? 'UFODSK' : "SLOT #{save.slot}"} ╠═════════════════════════════════╗"
-  puts '║ NUM - TITLE             - PLAYTIME    - ⌂GC ║'  
+  puts '║ NUM - TITLE             - PLAYTIME    - ⌂GC ║'
 
   (1..50).to_a.each do |game_num|
     game = GAME_INDEX[game_num.to_s.to_sym]
@@ -861,9 +705,10 @@ end
 
 def print_game_line(game, game_num, stats)
   return if stats[:playTime] == 'EMPTY'
+
   puts "║ ##{game_num.to_s.rjust(2,
-                                   '0')} - #{display_title(game[:title],
-                                                           17)} - #{stats[:playTime] == 'EMPTY' ? '-- EMPTY --' : stats[:playTime]} - #{stats[:hasGift] ? 'X' : '-'}#{stats[:hasGold] ? 'X' : '-'}#{stats[:hasCherry] ? 'X' : '-'} ║"
+                                 '0')} - #{display_title(game[:title],
+                                                         17)} - #{stats[:playTime] == 'EMPTY' ? '-- EMPTY --' : stats[:playTime]} - #{stats[:hasGift] ? 'X' : '-'}#{stats[:hasGold] ? 'X' : '-'}#{stats[:hasCherry] ? 'X' : '-'} ║"
 end
 
 def display_game_info_for_copy(source_game_data, dest_game_data, game_list)
@@ -917,4 +762,10 @@ if ARGV.count != 0
   exit
 end
 
-# main
+main
+# from_save = SaveFile.find_or_create_slot(1)
+# to_save = SaveFile.find_or_create_slot(3)
+# p to_save.filtered_data
+# view_save_game_info(to_save)
+# # delete_game_data_for_slot([3,5], to_save)
+# copy_games_to_save(from_save, to_save, [3, 5])

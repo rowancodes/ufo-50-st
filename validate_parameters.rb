@@ -21,7 +21,7 @@ class ValidateParameters
 
   def file_doesnt_exist_for_slots?(slots, reason: "Save file doesn't exist.")
     slots.each do |filenum|
-      filepath = filepath_for_slot(filenum)
+      filepath = SaveFile.filepath_for_slot(filenum)
       unless File.exist?(filepath)
         fail_with_reason(reason: reason)
         return true
@@ -59,4 +59,16 @@ class ValidateParameters
     end
     false
   end
+end
+
+def set_optional_params(params)
+  if params.include?('--output')
+    arg_index = params.index('--output') + 1
+    OPTIONAL_PARAMS[:output] = params[arg_index]
+  end
+
+  OPTIONAL_PARAMS[:no_verify] = true if params.include?('--no-verify')
+  OPTIONAL_PARAMS[:overwrite] = true if params.include?('--overwrite')
+  OPTIONAL_PARAMS[:verbose] = true if params.include?('--verbose')
+  OPTIONAL_PARAMS[:validate_bk] = false if params.include?('--no-validate')
 end
