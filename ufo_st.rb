@@ -7,9 +7,9 @@ require 'base64'
 require 'json'
 require 'fileutils'
 require 'date'
-require_relative 'game_index'
-require_relative 'validate_parameters'
-require_relative 'block_koala'
+require_relative 'src/game_index'
+require_relative 'src/validate_parameters'
+require_relative 'src/block_koala'
 
 OPTIONAL_PARAMS = { output: nil, no_verify: false, overwrite: false, verbose: false, validate_bk: true }
 
