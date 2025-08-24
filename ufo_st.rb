@@ -19,6 +19,8 @@ SAVE_INDEX = {
   "3": nil
 }
 
+$start_time = nil
+
 class SaveFile
   def initialize(slot: nil, disk_path: nil)
     @slot = slot
@@ -77,23 +79,43 @@ class SaveFile
   end
 
   def indexed_save_data
+    $start_time = Time.now
     @indexed_save_data ||= build_save_data_index
+  end
+
+  def get_matching_pairs(unparsed_json, regex)
+    data = JSON.parse(unparsed_json)
+
+    search = ->(obj, result = {}) do
+      case obj
+      when Hash
+        obj.each do |k, v|
+          result[k] = v if k.match(regex)
+          search.call(v, result)
+        end
+      when Array
+        obj.each { |item| search.call(item, result) }
+      end
+      result
+    end
+
+    search.call(data)
   end
 
   def build_save_data_index
     debug(m: "Building save data index for Save #{@slot}")
 
-    parsed = JSON.parse(raw_save_data)
     index = {}
 
     (0..50).each do |game_num|
+      # p game_num
       internal_id = GAME_INDEX[game_num.to_s.to_sym][:id]
-      search = parsed.select do |k, _v|
-        k.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/)
-      end
+      regex = /\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/
+      search = get_matching_pairs(raw_save_data, regex)
       index[game_num] = search unless search.empty?
     end
 
+    p Time.now - $start_time
     index
   end
 
@@ -694,7 +716,6 @@ def display_title(title, limit)
 end
 
 def view_save_game_info(save)
-  p save
   save.force_indexing
 
   puts "╔══╣ #{!save.disk_path.nil? ? 'UFODSK' : "SLOT #{save.slot}"} ╠═════════════════════════════════╗"
