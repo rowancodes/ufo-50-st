@@ -120,11 +120,11 @@ class SaveFile
 
     debug(m: "Generating filtered data for slot #{@slot} because it was nil or empty")
     filtered_terms = [
-      'profileLanguage',
-      'game0_libraryBG',
-      'randSortOrder',
-      'HS NAME PREV',
-      '18_customLevel'
+      'profileLanguage',   # don't copy someones language settings
+      'game0_libraryBG',   # don't copy bg
+      'randSortOrder',     # saves track random sort order
+      'HS NAME PREV',      # hiscores previous input
+      '18_customLevel'     # do not export BK custom levels unless explicitly stated
     ]
 
     @filtered_save_data = indexed_save_data.transform_values do |hash|
