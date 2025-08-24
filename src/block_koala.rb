@@ -1,5 +1,6 @@
+
 class BlockKoala
-  attr_accessor :levels
+  attr_reader :levels
 
   class Level
     VALID_CHARS = '0123456789ABCDEFGLHIJKMNOPQR'.chars.freeze
@@ -24,23 +25,20 @@ class BlockKoala
     end
 
     def invalid_length?
-      return unless @code.length != 192
-
+      return false if @code.length == 192
       fail_with_reason(reason: "#{@id}: Custom level code is not 192 characters")
       true
     end
 
     def illegal_characters?
       diff = @code.chars.uniq - VALID_CHARS
-      return if diff.empty?
-
+      return false if diff.empty?
       fail_with_reason(reason: "#{@id}: Illegal character in level code: #{diff.join(', ')}")
       true
     end
 
     def missing_necessary_blocks?
       return false unless OPTIONAL_PARAMS[:validate_bk]
-
       if !@code.include?('P')
         fail_with_reason(reason: "#{@id}: No player character (P) in custom level code")
         true
@@ -48,11 +46,10 @@ class BlockKoala
         fail_with_reason(reason: "#{@id}: More than one player (P) in custom level code")
         true
       elsif !@code.include?('R')
-        p @code
-        fail_with_reason(reason: "#{@id}: No star block (R) in custom level code")
+        fail_with_reason(reason: "#{@id}: No star block (R) in custom level code")  # ★
         true
       elsif !@code.include?('Q')
-        fail_with_reason(reason: "#{@id}: No star block destination (Q) in custom level code")
+        fail_with_reason(reason: "#{@id}: No star block destination (Q) in custom level code") # ☆
         true
       else
         false
@@ -60,22 +57,16 @@ class BlockKoala
     end
 
     def invalid_block_positions?
-      return true if bush_not_ok?
-      return true if fountain_not_ok?
-      return true if black_two_not_ok?
-      return true if black_three_not_ok?
-
-      false
+      bush_not_ok? || fountain_not_ok? || black_two_not_ok? || black_three_not_ok?
     end
 
-    def indices_of_matches(target)
-      sz = target.size
-      (0..@code.size - sz).select { |i| @code[i, sz] == target }
+    def indices_that_match(character)
+      sz = character.size
+      (0..@code.size - sz).select { |i| @code[i, sz] == character }
     end
 
     def bush_not_ok?
-      indices = indices_of_matches('B')
-      indices.any? do |index|
+      indices_that_match('B').any? do |index|
         col = index % 16
         row = index / 16
         @code[index + 1] != '0' ||
@@ -87,8 +78,7 @@ class BlockKoala
     end
 
     def fountain_not_ok?
-      indices = indices_of_matches('C')
-      indices.any? do |index|
+      indices_that_match('C').any? do |index|
         col = index % 16
         row = index / 16
         @code[index + 1] != '0' ||
@@ -105,8 +95,7 @@ class BlockKoala
     end
 
     def black_two_not_ok?
-      indices = indices_of_matches('7')
-      indices.any? do |index|
+      indices_that_match('7').any? do |index|
         col = index % 16
         row = index / 16
         col == 15 || row == 11
@@ -116,8 +105,7 @@ class BlockKoala
     end
 
     def black_three_not_ok?
-      indices = indices_of_matches('8')
-      indices.any? do |index|
+      indices_that_match('8').any? do |index|
         col = index % 16
         row = index / 16
         col > 13 || row > 9
@@ -128,7 +116,7 @@ class BlockKoala
   end
 
   def initialize(level_codes:)
-    @levels = level_codes.map { |set| Level.new(disk_id: set[0], level_code: set[1]) }
+    @levels = level_codes.map { |disk_id, level_code| Level.new(disk_id: disk_id, level_code: level_code) }
   end
 end
 
@@ -136,56 +124,95 @@ def print_custom_level_slots(save)
   valid = (51..58).map { |n| "game18_customLevel#{n}" }
   ids = []
   custom_levels = JSON.parse(save.raw_save_data).each_key do |key|
-    if valid.include?(key)
-      ids.push(key[-2..])
-      true
-    else
-      false
-    end
+    ids << key[-2..] if valid.include?(key)
   end
-
   return if custom_levels.empty?
 
   puts
   puts "Type 'view -slot [1/2/3] -bk [51/52/etc]' to see level code"
-  puts "SLOT #{save.slot}:\t║ #51 ║ #52 ║ #53 ║ #54 ║"
-  puts "\t║ [#{ids.include?('51') ? 'X' : ' '}] ║ [#{ids.include?('52') ? 'X' : ' '}] ║ [#{ids.include?('53') ? 'X' : ' '}] ║ [#{ids.include?('54') ? 'X' : ' '}] ║"
-  puts "\t║ [#{ids.include?('55') ? 'X' : ' '}] ║ [#{ids.include?('56') ? 'X' : ' '}] ║ [#{ids.include?('57') ? 'X' : ' '}] ║ [#{ids.include?('58') ? 'X' : ' '}] ║"
-  puts "\t║ #55 ║ #56 ║ #57 ║ #58 ║"
+  puts ":"
+  puts "╔═╣ SLOT #{save.slot} ╠════════════════╗"
+  puts "║   #51   #52   #53   #54   ║"
+  puts "║   [#{ids.include?('51') ? 'X' : ' '}]   [#{ids.include?('52') ? 'X' : ' '}]   [#{ids.include?('53') ? 'X' : ' '}]   [#{ids.include?('54') ? 'X' : ' '}]   ║"
+  puts "║   [#{ids.include?('55') ? 'X' : ' '}]   [#{ids.include?('56') ? 'X' : ' '}]   [#{ids.include?('57') ? 'X' : ' '}]   [#{ids.include?('58') ? 'X' : ' '}]   ║"
+  puts "║   #55   #56   #57   #58   ║"
+  puts "╚═══════════════════════════╝"
 end
 
 def print_custom_bk_map(level_code, slot_val, custom_id)
-  puts "╔════╣ #{slot_val}:#{custom_id} ╠════╗"
+  puts "╔═╣ #{slot_val}:#{custom_id} ╠══════════════════════╗"
+  grid = Array.new(12) { Array.new(16) }
+  12.times { |y| 16.times { |x| grid[y][x] = level_code[y * 16 + x] } }
+  rendered = Array.new(12) { Array.new(16) }
+  symbols = {
+    # arrows
+    'H' => '▲',
+    'I' => '▼',
+    'J' => '◀',
+    'K' => '▶',
+
+    # star blocks
+    'R' => '★', # Star block
+    'Q' => '☆', # Star block destination
+
+    # red blocks
+    '1' => "\e[41m1\e[0m",
+    '2' => "\e[41m2\e[0m",
+    '3' => "\e[41m3\e[0m",
+    '4' => "\e[41m4\e[0m",
+
+    # black blocks
+    '5' => "\e[7m5\e[0m",
+    '6' => '1',
+    '7' => '2',
+    '8' => '3',
+    '9' => '4',
+
+    # blue blocks
+    'D' => "\e[44m1\e[0m",
+    'E' => "\e[44m2\e[0m",
+    'F' => "\e[44m3\e[0m",
+    'G' => "\e[44m4\e[0m"
+  }
+
   12.times do |y|
-    puts "║#{level_code[(y * 16)...((y * 16) + 16)].gsub('0', '.')}║"
+    16.times do |x|
+      c = grid[y][x]
+      case c
+      when 'B'
+        rendered[y][x] = '╔'; rendered[y][x+1] = '╗' if x<15
+        rendered[y+1][x] = '╚' if y<11; rendered[y+1][x+1] = '╝' if x<15 && y<11
+      when 'C'
+        rendered[y][x] = '╔'; rendered[y][x+1] = '═' if x<15; rendered[y][x+2] = '╗' if x<14
+        rendered[y+1][x] = '║' if y<11; rendered[y+1][x+1] = '≈' if x<15 && y<11; rendered[y+1][x+2] = '║' if x<14 && y<11
+        rendered[y+2][x] = '╚' if y<10; rendered[y+2][x+1] = '═' if x<15 && y<10; rendered[y+2][x+2] = '╝' if x<14 && y<10
+      else
+        rendered[y][x] ||= symbols[c] || c
+      end
+    end
   end
-  puts '╚════════════════╝'
+
+  rendered.each { |row| puts "║" + row.map { |c| c == '0' ? '.' : c }.join(' ') + "║" }
+  puts '╚═══════════════════════════════╝'
 end
 
 def view_custom_bk_maps(save, custom_ids, level_code: nil)
-  return print_custom_bk_map(level_code, 'X', 'XX') unless level_code.nil?
-
-  level_codes = []
+  return print_custom_bk_map(level_code, 'X', 'XX') if level_code
 
   custom_ids.each do |id|
     game_data = save.raw_save_data
-    search_for_game_in_data(game_data, GAME_INDEX[:"15"][:id])
     level_code = JSON.parse(game_data).select { |k| k == "game18_customLevel#{id}" }
-
     if level_code.empty?
       fail_with_reason(reason: "No custom level found for Slot #{save.slot}, id: #{id}")
       return
     end
-
-    level_codes.push([level_code["game18_customLevel#{id}"], id])
+    print_custom_bk_map(level_code["game18_customLevel#{id}"], save.slot, id)
   end
-
-  level_codes.each { |set| print_custom_bk_map(set[0], save.slot, set[1]) }
 end
 
 def export_bk_custom_to_disk(save, custom_vals)
   def format_custom_level_string(code)
-    formatted = code
+    formatted = code.dup
     i = 0
     (0..192).step(16) do |n|
       formatted.insert(n + i, "\n")
@@ -195,23 +222,19 @@ def export_bk_custom_to_disk(save, custom_vals)
   end
 
   game_data = save.raw_save_data
-  game_data = search_for_game_in_data(game_data, GAME_INDEX[:"15"][:id])
-
   data_to_export = {}
 
   custom_vals.each do |id|
-    level_code = game_data.select { |k| k == "game18_customLevel#{id}" }
-
+    level_code = JSON.parse(game_data).select { |k| k == "game18_customLevel#{id}" }
     if level_code.empty?
-      fail_with_reason(reason: "No custom level found for Slot #{slot_val}, id: #{id}")
+      fail_with_reason(reason: "No custom level found for Slot #{save.slot}, id: #{id}")
       return
     end
-
     data_to_export.merge!(level_code)
   end
 
   if data_to_export.empty?
-    fail_with_reason(reason: "No block koala custom levels found in Slot #{slot_val}, ids: #{custom_vals.join(', ')}")
+    fail_with_reason(reason: "No block koala custom levels found in Slot #{save.slot}, ids: #{custom_vals.join(', ')}")
     return
   end
 
@@ -226,7 +249,7 @@ def export_bk_custom_to_disk(save, custom_vals)
 end
 
 def copy_custom_levels_to_save(save, custom_id_list, disk_drop: nil)
-  disk_drop.nil? ? raise : disk_drop
+  raise if disk_drop.nil?
 
   data_to_copy = {}
   destination_found_levels = []
@@ -235,30 +258,24 @@ def copy_custom_levels_to_save(save, custom_id_list, disk_drop: nil)
   custom_id_list.each_with_index do |id, index|
     key = "game18_customLevel#{id}"
     disk_drop_level = disk_drop["BK_Custom#{index + 1}"]
-    level_data = {}
-    level_data[key.to_sym] = disk_drop_level
-
-    data_to_copy.merge!(level_data)
+    data_to_copy[key.to_sym] = disk_drop_level
 
     search = JSON.parse(save.raw_save_data).select { |k| k == key }
-
     unless search.empty?
-      destination_found_levels.push(id)
+      destination_found_levels << id
       data_to_delete.merge!(search)
     end
   end
 
   if OPTIONAL_PARAMS[:overwrite] == true || destination_found_levels.empty?
     copy_data_to_slot(data_to_copy, data_to_delete, save)
-  elsif user_confirms_overwrite?(
-    destination_found_levels, destination_num, bk: true
-  )
+  elsif user_confirms_overwrite?(destination_found_levels, save.slot, bk: true)
     copy_data_to_slot(data_to_copy, data_to_delete, save)
   end
 end
 
 def search_for_game_in_data(game_data, internal_id)
-  JSON.parse(game_data).select do |key|
-    key.match(/\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/)
+  JSON.parse(game_data).select do |key, _|
+    key.match(/\bgame#{internal_id}[^0-9][a-z]+|game0+[a-z][^0-9]+#{internal_id}\b/)
   end
 end
