@@ -1,4 +1,3 @@
-
 class BlockKoala
   attr_reader :levels
 
@@ -26,6 +25,7 @@ class BlockKoala
 
     def invalid_length?
       return false if @code.length == 192
+
       fail_with_reason(reason: "#{@id}: Custom level code is not 192 characters")
       true
     end
@@ -33,12 +33,14 @@ class BlockKoala
     def illegal_characters?
       diff = @code.chars.uniq - VALID_CHARS
       return false if diff.empty?
+
       fail_with_reason(reason: "#{@id}: Illegal character in level code: #{diff.join(', ')}")
       true
     end
 
     def missing_necessary_blocks?
       return false unless OPTIONAL_PARAMS[:validate_bk]
+
       if !@code.include?('P')
         fail_with_reason(reason: "#{@id}: No player character (P) in custom level code")
         true
@@ -46,7 +48,7 @@ class BlockKoala
         fail_with_reason(reason: "#{@id}: More than one player (P) in custom level code")
         true
       elsif !@code.include?('R')
-        fail_with_reason(reason: "#{@id}: No star block (R) in custom level code")  # ★
+        fail_with_reason(reason: "#{@id}: No star block (R) in custom level code") # ★
         true
       elsif !@code.include?('Q')
         fail_with_reason(reason: "#{@id}: No star block destination (Q) in custom level code") # ☆
@@ -130,13 +132,13 @@ def print_custom_level_slots(save)
 
   puts
   puts "Type 'view -slot [1/2/3] -bk [51/52/etc]' to see level code"
-  puts ":"
+  puts ':'
   puts "╔═╣ SLOT #{save.slot} ╠════════════════╗"
-  puts "║   #51   #52   #53   #54   ║"
+  puts '║   #51   #52   #53   #54   ║'
   puts "║   [#{ids.include?('51') ? 'X' : ' '}]   [#{ids.include?('52') ? 'X' : ' '}]   [#{ids.include?('53') ? 'X' : ' '}]   [#{ids.include?('54') ? 'X' : ' '}]   ║"
   puts "║   [#{ids.include?('55') ? 'X' : ' '}]   [#{ids.include?('56') ? 'X' : ' '}]   [#{ids.include?('57') ? 'X' : ' '}]   [#{ids.include?('58') ? 'X' : ' '}]   ║"
-  puts "║   #55   #56   #57   #58   ║"
-  puts "╚═══════════════════════════╝"
+  puts '║   #55   #56   #57   #58   ║'
+  puts '╚═══════════════════════════╝'
 end
 
 def print_custom_bk_map(level_code, slot_val, custom_id)
@@ -180,19 +182,29 @@ def print_custom_bk_map(level_code, slot_val, custom_id)
       c = grid[y][x]
       case c
       when 'B'
-        rendered[y][x] = '╔'; rendered[y][x+1] = '╗' if x<15
-        rendered[y+1][x] = '╚' if y<11; rendered[y+1][x+1] = '╝' if x<15 && y<11
+        rendered[y][x] = '╔'
+        rendered[y][x + 1] = '╗' if x < 15
+        rendered[y + 1][x] = '╚' if y < 11
+        rendered[y + 1][x + 1] = '╝' if x < 15 && y < 11
       when 'C'
-        rendered[y][x] = '╔'; rendered[y][x+1] = '═' if x<15; rendered[y][x+2] = '╗' if x<14
-        rendered[y+1][x] = '║' if y<11; rendered[y+1][x+1] = '≈' if x<15 && y<11; rendered[y+1][x+2] = '║' if x<14 && y<11
-        rendered[y+2][x] = '╚' if y<10; rendered[y+2][x+1] = '═' if x<15 && y<10; rendered[y+2][x+2] = '╝' if x<14 && y<10
+        rendered[y][x] = '╔'
+        rendered[y][x + 1] = '═' if x < 15
+        rendered[y][x + 2] = '╗' if x < 14
+        rendered[y + 1][x] = '║' if y < 11
+
+        rendered[y + 1][x + 1] = '≈' if x < 15 && y < 11
+        rendered[y + 1][x + 2] = '║' if x < 14 && y < 11
+        rendered[y + 2][x] = '╚' if y < 10
+
+        rendered[y + 2][x + 1] = '═' if x < 15 && y < 10
+        rendered[y + 2][x + 2] = '╝' if x < 14 && y < 10
       else
         rendered[y][x] ||= symbols[c] || c
       end
     end
   end
 
-  rendered.each { |row| puts "║" + row.map { |c| c == '0' ? '.' : c }.join(' ') + "║" }
+  rendered.each { |row| puts '║' + row.map { |c| c == '0' ? '.' : c }.join(' ') + '║' }
   puts '╚═══════════════════════════════╝'
 end
 

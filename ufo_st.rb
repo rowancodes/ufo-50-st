@@ -83,7 +83,7 @@ class SaveFile
   def get_matching_pairs(unparsed_json, regex)
     data = JSON.parse(unparsed_json)
 
-    search = ->(obj, result = {}) do
+    search = lambda do |obj, result = {}|
       case obj
       when Hash
         obj.each do |k, v|
@@ -577,8 +577,8 @@ def copy_data_to_slot(data_to_copy, data_to_delete, to_save)
   new_save_data = SaveFile.encode_data(destination_data)
 
   save_data_to_slot(new_save_data, to_save)
-  rescue StandardError => e
-    puts "XX Copy failed! => #{e}"
+rescue StandardError => e
+  puts "XX Copy failed! => #{e}"
 end
 
 def user_confirms_overwrite?(id_list, dest_slot_num, bk: false)
