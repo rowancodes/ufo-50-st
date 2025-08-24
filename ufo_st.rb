@@ -19,8 +19,6 @@ SAVE_INDEX = {
   "3": nil
 }
 
-$start_time = nil
-
 class SaveFile
   def initialize(slot: nil, disk_path: nil)
     @slot = slot
@@ -79,7 +77,6 @@ class SaveFile
   end
 
   def indexed_save_data
-    $start_time = Time.now
     @indexed_save_data ||= build_save_data_index
   end
 
@@ -108,54 +105,37 @@ class SaveFile
     index = {}
 
     (0..50).each do |game_num|
-      # p game_num
       internal_id = GAME_INDEX[game_num.to_s.to_sym][:id]
       regex = /\bgame#{internal_id}[^0-9][\a-z]+|game0+[\a-z][^0-9]+#{internal_id}\b/
       search = get_matching_pairs(raw_save_data, regex)
       index[game_num] = search unless search.empty?
     end
 
-    p Time.now - $start_time
     index
   end
 
   # filter out any save info not to copy
   def filtered_data
-    return @filtered_save_data unless @filtered_save_data.nil?
+    return @filtered_save_data unless @filtered_save_data.nil? || @filtered_save_data.empty?
 
-    debug(m: "Generating filtered data for slot #{@slot} because it was nil")
-    filtered_save_data = indexed_save_data.dup
-
+    debug(m: "Generating filtered data for slot #{@slot} because it was nil or empty")
     filtered_terms = [
-      'profileLanguage',   # don't copy someones language settings
-      'game0_libraryBG',   # don't copy bg
-      'randSortOrder',     # saves track random sort order
-      'HS NAME PREV',      # hiscores previous input
-      '18_customLevel'     # do not export BK custom levels unless explicitly stated
+      'profileLanguage',
+      'game0_libraryBG',
+      'randSortOrder',
+      'HS NAME PREV',
+      '18_customLevel'
     ]
 
-    # nested hashes, key { key { value } }
-    filtered_save_data.each do |top_key, hash|
-      banned_keys = hash.select do |nested_key, _v|
-        filtered_terms.any? do |term|
-          nested_key.include?(term)
-        end
-      end
-
-      banned_keys.each_key do |banned_key|
-        filtered_save_data[top_key].delete(banned_key)
-      end
+    @filtered_save_data = indexed_save_data.transform_values do |hash|
+      hash.reject { |k, _| filtered_terms.any? { |term| k.include?(term) } }
     end
-
-    @filtered_save_data = filtered_save_data
   end
 
   def search_for(game_list)
     internal_ids = game_list.map { |num| GAME_INDEX[num.to_s.to_sym][:id] }
     search = filtered_data.slice(0, *game_list.map(&:to_i))
-
     search[0] = search[0].select { |k, _v| k.match(/(?<!\d)(#{internal_ids.map(&:to_i).join('|')})\z/) } if search[0]
-
     search
   end
 
@@ -166,6 +146,7 @@ class SaveFile
   def reindex(new_raw_save_data)
     debug(m: "Reindexing save data for slot #{@slot}")
     @indexed_save_data&.clear
+    @filtered_save_data&.clear
     @raw_save_data = new_raw_save_data
     @indexed_save_data = build_save_data_index
     @filtered_save_data = filtered_data
@@ -361,17 +342,21 @@ def handle_view(params, pv)
   save = SaveFile.find_or_create_slot(slot_val)
 
   if params.include?('-bk')
-    bk_val = params[params.index('-bk') + 1]&.split(',')&.uniq
-    if bk_val.nil?
-      print_custom_level_slots(save)
-      return
-    end
-    return if pv.ids_incorrect?(bk_val, 51..58, reason: "Custom level id incorrect: #{bk_val.join(', ')}")
-
-    view_custom_bk_maps(save, bk_val)
+    handle_view_bk(params, pv, save)
   else
     view_save_game_info(save)
   end
+end
+
+def handle_view_bk(params, pv, save)
+  bk_val = params[params.index('-bk') + 1]&.split(',')&.uniq
+  if bk_val.nil?
+    print_custom_level_slots(save)
+    return
+  end
+  return if pv.ids_incorrect?(bk_val, 51..58, reason: "Custom level id incorrect: #{bk_val.join(', ')}")
+
+  view_custom_bk_maps(save, bk_val)
 end
 
 def handle_goals(params, pv)
@@ -617,6 +602,9 @@ def games_in_common(save, game_list)
 end
 
 def copy_games_to_save(from_save, to_save, game_list)
+  from_save.force_indexing
+  to_save.force_indexing
+
   source_found_games = games_in_common(from_save, game_list)
   destination_found_games = games_in_common(to_save, game_list)
 
@@ -698,7 +686,7 @@ def calculate_time(time_in_ms)
 end
 
 def get_completion_stats(game_data, id)
-  game_data = game_data[0]
+  game_data = game_data[0] || {}
   {
     playTime: calculate_time(game_data["game0_gameTimeSum#{id}"]) || nil,
     hasGold: game_data["game0_goldTime#{id}"].nil?.!,
