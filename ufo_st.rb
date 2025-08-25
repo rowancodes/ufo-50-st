@@ -8,6 +8,7 @@ require 'json'
 require 'fileutils'
 require 'date'
 require 'readline'
+
 require_relative 'src/game_index'
 require_relative 'src/validate_parameters'
 require_relative 'src/block_koala'
@@ -204,7 +205,7 @@ def get_help(logo: true)
   puts 'Optional:'
   optional.each { |opt, desc| puts "\t#{opt.ljust(12)}=>\t#{desc}" unless opt.empty? || desc.empty? }
 
-  puts 'v1.1.4'
+  puts 'v1.2.0'
 end
 
 def puts_logo

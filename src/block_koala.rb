@@ -48,10 +48,10 @@ class BlockKoala
         fail_with_reason(reason: "#{@id}: More than one player (P) in custom level code")
         true
       elsif !@code.include?('R')
-        fail_with_reason(reason: "#{@id}: No star block (R) in custom level code") # ★
+        fail_with_reason(reason: "#{@id}: No star block (R) in custom level code")
         true
       elsif !@code.include?('Q')
-        fail_with_reason(reason: "#{@id}: No star block destination (Q) in custom level code") # ☆
+        fail_with_reason(reason: "#{@id}: No star block destination (Q) in custom level code")
         true
       else
         false
