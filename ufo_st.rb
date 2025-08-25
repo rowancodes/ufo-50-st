@@ -355,7 +355,8 @@ def handle_view_bk(params, pv, save)
     print_custom_level_slots(save)
     return
   end
-  return if pv.ids_incorrect?(bk_val, 51..58, reason: "Custom level id incorrect: #{bk_val.join(', ')}")
+  
+  return if pv.ids_incorrect?(bk_val, 51..58, reason: "Custom level id incorrect: ")
 
   view_custom_bk_maps(save, bk_val)
 end

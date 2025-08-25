@@ -168,8 +168,8 @@ def print_custom_bk_map(level_code, slot_val, custom_id)
     'P' => colorize('P', colors[:lite_red_fg]),
     'O' => colorize('O', colors[:lite_green_fg]),
 
-    # small bush
-    'A' => colorize('♣', colors[:green_fg]),
+    'A' => colorize('♣', colors[:green_fg]), # small bush
+    'L' => '▓', # stone path
 
     # arrows
     'H' => colorize('▲', colors[:yellow_fg_white_bg]),
@@ -206,20 +206,12 @@ def print_custom_bk_map(level_code, slot_val, custom_id)
       c = grid[y][x]
       case c
       when 'B'
-        if x < 15 && y < 11
-          rendered[y][x, 2] = [colorize('╔', colors[:green_fg]), colorize('╗', colors[:green_fg])]
-          rendered[y + 1][x, 2] = ['╚', '╝']
-        else
-          rendered[y][x] ||= '╔'
-        end
+        rendered[y][x, 2] = [colorize('╔', colors[:green_fg]), colorize('╗', colors[:green_fg])]
+        rendered[y + 1][x, 2] = ['╚', '╝']
       when 'C'
-        if x < 14 && y < 10
-          rendered[y][x, 3] = ['╔', '═', '╗']
-          rendered[y + 1][x, 3] = ['║', colorize('≈', colors[:blue_fg]), '║']
-          rendered[y + 2][x, 3] = ['╚', '═', '╝']
-        else
-          rendered[y][x] ||= '╔'
-        end
+        rendered[y][x, 3] = ['╔', '═', '╗']
+        rendered[y + 1][x, 3] = ['║', colorize('≈', colors[:blue_fg]), '║']
+        rendered[y + 2][x, 3] = ['╚', '═', '╝']
       else
         rendered[y][x] ||= symbols[c] || c
       end
