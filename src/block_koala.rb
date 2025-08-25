@@ -132,7 +132,7 @@ def print_custom_level_slots(save)
 
   puts
   puts "Type 'view -slot [1/2/3] -bk [51/52/etc]' to see level code"
-  puts ':'
+  puts
   puts "╔═╣ SLOT #{save.slot} ╠════════════════╗"
   puts '║   #51   #52   #53   #54   ║'
   puts "║   [#{ids.include?('51') ? 'X' : ' '}]   [#{ids.include?('52') ? 'X' : ' '}]   [#{ids.include?('53') ? 'X' : ' '}]   [#{ids.include?('54') ? 'X' : ' '}]   ║"
@@ -146,35 +146,59 @@ def print_custom_bk_map(level_code, slot_val, custom_id)
   grid = Array.new(12) { Array.new(16) }
   12.times { |y| 16.times { |x| grid[y][x] = level_code[y * 16 + x] } }
   rendered = Array.new(12) { Array.new(16) }
+
+  def colorize(text, code)
+    "\e[#{code}m#{text}\e[0m"
+  end
+
+  colors = {
+    lite_red_fg: '91',
+    lite_green_fg: '92',
+    lite_yellow_fg: '93',
+    yellow_fg_white_bg: '33;47',
+    blue_fg: '94',
+    red_bg: '97;41',
+    lite_grey_bg: '7',
+    blue_bg: '97;44',
+    green_fg: '32'
+  }
+
   symbols = {
+    # guys
+    'P' => colorize('P', colors[:lite_red_fg]),
+    'O' => colorize('O', colors[:lite_green_fg]),
+
+    # small bush
+    'A' => colorize('♣', colors[:green_fg]),
+
     # arrows
-    'H' => '▲',
-    'I' => '▼',
-    'J' => '◀',
-    'K' => '▶',
+    'H' => colorize('▲', colors[:yellow_fg_white_bg]),
+    'I' => colorize('▼', colors[:yellow_fg_white_bg]),
+    'J' => colorize('<', colors[:yellow_fg_white_bg]),
+    'K' => colorize('>', colors[:yellow_fg_white_bg]),
 
     # star blocks
-    'R' => '★', # Star block
-    'Q' => '☆', # Star block destination
+    'R' => colorize('*', colors[:lite_yellow_fg]),
+    'Q' => colorize('Q', colors[:lite_yellow_fg]),
 
     # red blocks
-    '1' => "\e[41m1\e[0m",
-    '2' => "\e[41m2\e[0m",
-    '3' => "\e[41m3\e[0m",
-    '4' => "\e[41m4\e[0m",
+    '1' => colorize('•', colors[:red_bg]),
+    '2' => colorize('2', colors[:red_bg]),
+    '3' => colorize('3', colors[:red_bg]),
+    '4' => colorize('4', colors[:red_bg]),
 
     # black blocks
-    '5' => "\e[7m5\e[0m",
-    '6' => '1',
+    '5' => colorize('5', colors[:lite_grey_bg]),
+    '6' => '•',
     '7' => '2',
     '8' => '3',
     '9' => '4',
 
     # blue blocks
-    'D' => "\e[44m1\e[0m",
-    'E' => "\e[44m2\e[0m",
-    'F' => "\e[44m3\e[0m",
-    'G' => "\e[44m4\e[0m"
+    'D' => colorize('•', colors[:blue_bg]),
+    'E' => colorize('2', colors[:blue_bg]),
+    'F' => colorize('3', colors[:blue_bg]),
+    'G' => colorize('4', colors[:blue_bg])
   }
 
   12.times do |y|
@@ -182,29 +206,27 @@ def print_custom_bk_map(level_code, slot_val, custom_id)
       c = grid[y][x]
       case c
       when 'B'
-        rendered[y][x] = '╔'
-        rendered[y][x + 1] = '╗' if x < 15
-        rendered[y + 1][x] = '╚' if y < 11
-        rendered[y + 1][x + 1] = '╝' if x < 15 && y < 11
+        if x < 15 && y < 11
+          rendered[y][x, 2] = [colorize('╔', colors[:green_fg]), colorize('╗', colors[:green_fg])]
+          rendered[y + 1][x, 2] = ['╚', '╝']
+        else
+          rendered[y][x] ||= '╔'
+        end
       when 'C'
-        rendered[y][x] = '╔'
-        rendered[y][x + 1] = '═' if x < 15
-        rendered[y][x + 2] = '╗' if x < 14
-        rendered[y + 1][x] = '║' if y < 11
-
-        rendered[y + 1][x + 1] = '≈' if x < 15 && y < 11
-        rendered[y + 1][x + 2] = '║' if x < 14 && y < 11
-        rendered[y + 2][x] = '╚' if y < 10
-
-        rendered[y + 2][x + 1] = '═' if x < 15 && y < 10
-        rendered[y + 2][x + 2] = '╝' if x < 14 && y < 10
+        if x < 14 && y < 10
+          rendered[y][x, 3] = ['╔', '═', '╗']
+          rendered[y + 1][x, 3] = ['║', colorize('≈', colors[:blue_fg]), '║']
+          rendered[y + 2][x, 3] = ['╚', '═', '╝']
+        else
+          rendered[y][x] ||= '╔'
+        end
       else
         rendered[y][x] ||= symbols[c] || c
       end
     end
   end
 
-  rendered.each { |row| puts '║' + row.map { |c| c == '0' ? '.' : c }.join(' ') + '║' }
+  rendered.each { |row| puts '║' + row.map { |c| c == '0' ? '░' : c }.join(' ') + '║' }
   puts '╚═══════════════════════════════╝'
 end
 
