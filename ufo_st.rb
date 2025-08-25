@@ -7,6 +7,7 @@ require 'base64'
 require 'json'
 require 'fileutils'
 require 'date'
+require 'readline'
 require_relative 'src/game_index'
 require_relative 'src/validate_parameters'
 require_relative 'src/block_koala'
@@ -235,8 +236,7 @@ def puts_disk_detected
 end
 
 def get_user_input
-  print '>> '
-  input = $stdin.gets.chomp
+  input = Readline.readline('>> ', true)
   input.gsub!(/[^a-zA-Z0-9\-,._ ]+[a-zA-Z]/, '')
   input.downcase
 end
